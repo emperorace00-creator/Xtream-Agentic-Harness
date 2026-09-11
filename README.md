@@ -1,11 +1,24 @@
 # Xtream — Sandboxed AI Assistant
 
-Xtream is an agentic assistant that talks to multiple LLM backends (Cloudflare
-, NVIDIA, Google Gemini, or your own local llama.cpp server) through a simple XML tool-calling
+Xtream is an agentic assistant that talks to multiple LLM backends (NVIDIA, Gemini, or your own local llama.cpp server) through a simple XML tool-calling
 protocol — so tool use works with any model. Code execution runs inside a Docker sandbox,
 PDFs are ingested through a RAG pipeline (chunking → embeddings → cosine
 similarity → reranking), workspace code search runs on BM25, and every turn is
 archived so you can undo, rerun, or resume mid-task after an interrupt.
+
+## TL;DR
+
+- **XML tool calling** — tools are invoked via XML tags so any text-generating model can drive the loop, no native function-calling support required
+- **Sandboxed code execution** — `<bash>` commands run inside an isolated Docker container; the CLI stays on the host
+- **PDF & text RAG** — ingest PDFs or `.txt`/`.md` files, chunk + embed them, then search semantically via `<doc_search>`
+- **Web & academic search** — Linkup for live web search; Semantic Scholar for academic papers with TL;DR summaries and Open Access PDF links
+- **State rollback** — every turn is zip-archived; `/restore N` reverts the workspace and conversation to any of the last 20 turns
+- **Cross-session history** — every conversation is appended to a global JSONL archive, searchable via `<search_history>` using embeddings across all past sessions
+- **Auto tool-format correction** — a local ML classifier detects when a model hallucinates the wrong tool format and nudges it to retry correctly
+- **Image OCR & vision tiling** — dense images are tiled to capture fine detail
+- **BM25 workspace search** — instant, keyword search (better than grep) across your codebase with a code-aware tokenizer (splits `camelCase`, `snake_case`)
+
+---
 
 ## Architecture
 
