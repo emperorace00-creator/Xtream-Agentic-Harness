@@ -1,0 +1,14 @@
+catppuccin
+rich>=13.0
+tiktoken
+requests
+python-dotenv
+linkup-sdk
+google-genai
+pymupdf
+Pillow
+numpy
+rank-bm25
+opencv-python
+pylatexenc
+prompt-toolkit>=3.0.0
