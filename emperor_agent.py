@@ -388,8 +388,8 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         """Return a one-line status string."""
         if self._active_groups:
             parts = []
-            labels = {"web": "web", "files": "files", "pdf": "pdf", "bash": "bash"}
-            for g in ("web", "files", "pdf", "bash"):
+            labels = {"web": "web", "files": "files", "pdf": "pdf", "bash": "bash", "research": "research"}
+            for g in ("web", "files", "pdf", "bash", "research"):
                 if g in self._active_groups:
                     parts.append(f"[green]{labels[g]}[/green]")
                 else:
@@ -1022,21 +1022,26 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         """
         Lazily loads the alien-format classifier from alien_format_clf.joblib.
         Returns the detector on success, None if the file is missing or any
-        dependency (joblib, sklearn) is unavailable — the agent never crashes
-        because of a missing or corrupt model file.
-        Uses os.path (already imported) so no new imports are needed.
+        dependency (joblib, sklearn) is unavailable.
         """
+        # Already loaded successfully
         if self._alien_detector is not None:
             return self._alien_detector
+        # Previous load attempt failed — don't retry every call
+        if getattr(self, "_alien_detector_failed", False):
+            return None
         model_path = os.path.join(os.path.dirname(__file__), "alien_format_clf.joblib")
         if not os.path.exists(model_path):
+            console.print("[dim]⚠️  alien_format_clf.joblib not found — alien detection disabled[/dim]")
+            self._alien_detector_failed = True
             return None
         try:
-            # Import lazily — sklearn/numpy only load on first call, not at startup.
             from train_alien_format_classifier import AlienFormatDetector
             self._alien_detector = AlienFormatDetector.load(model_path)
-        except Exception:
-            pass   # missing deps, corrupt file, version mismatch — silently skip
+            console.print("[dim]✓ Alien format detector loaded[/dim]")
+        except Exception as e:
+            console.print(f"[yellow]⚠️  Alien detector load failed: {e}[/yellow]")
+            self._alien_detector_failed = True
         return self._alien_detector
 
     def _generate_with_tools(self, messages, web_agent, temp, token_counter, user_query: str = "", resume_mode: bool = False):
@@ -1155,16 +1160,15 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
                 # Gate: only check when no tool has already run this turn
                 # (_current_tool_call_log empty = this is the first/only response)
                 # and we haven't already sent a nudge (prevents infinite loop).
-                # NIM-only: the classifier was trained on alien formats observed
-                # via NIM backends (DeepSeek DSML, MiniMax <tool_call>, etc.).
-                # Gemini and Cloudflare use entirely different native tool formats
-                # that would produce false positives on this classifier.
+                # NIM + Google: the classifier catches alien formats (JSON blobs,
+                # YAML, || tags, etc.) on both backends. Cloudflare is still excluded
+                # — its native tool format differs enough to risk false positives.
                 if (not self._current_tool_call_log
                         and not self._alien_nudge_sent
-                        and config.ACTIVE_BACKEND == "nim"):
+                        and config.ACTIVE_BACKEND in ("nim", "google")):
+                    _response_text = clean_content or raw_content or ""
                     det = self._load_alien_detector()
                     if det is not None:
-                        _response_text = clean_content or raw_content or ""
                         is_alien, _prob = det.predict(_response_text)
                         if is_alien:
                             console.print(

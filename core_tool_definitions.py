@@ -246,7 +246,7 @@ Works on any path: /workspace, /uploads, /outputs, and absolute host paths (e.g.
 ---
 
 **workspace_search** — search across your saved notes and scratch files.
-Default is exact match. Set semantic=true to search by concept.
+Default is exact match (grep). Set semantic=true for BM25 keyword-concept search — matches files where your query tokens appear.
 
 <workspace_search>
 <query>Newton's laws of motion</query>

@@ -165,7 +165,18 @@ def random_args(tool: str) -> dict:
 #   - DeepSeek V3/R1 (older):  docs.vllm.ai/.../deepseekv3_tool_parser
 #   - Qwen/Hermes <tool_call>: qwen.readthedocs.io/framework/function_call
 #   - Qwen3-Coder nested tags: github.com/morph-labs/hermes-agent-fork
-#   - MiniMax M2:              huggingface.co/MiniMaxAI/MiniMax-M2/docs/tool_calling_guide.md
+#   - Qwen legacy ✿FUNCTION✿: github.com/QwenLM/Qwen-Agent
+#   - MiniMax M2 bracket:      huggingface.co/MiniMaxAI/MiniMax-M2/docs/tool_calling_guide.md
+#   - MiniMax M2 XML:          huggingface.co/MiniMaxAI/MiniMax-M2/docs/tool_calling_guide.md
+#   - Claude XML:              docs.anthropic.com/en/docs/tool-use/how-to-use-tools
+#   - Gemma/FunctionGemma:     ai.google.dev/gemma/docs/function-calling
+#   - Gemma 4 thinking:        <|tool_call> special token observed in prod
+#   - Nemotron (Llama-based):  build.nvidia.com/nvidia/llama-3_1-nemotron-ultra-253b-v1
+#   - Nemotron (native):       huggingface.co/nvidia/Nemotron-Mini-4B-Instruct
+#   - Plain JSON blob:         OpenAI-style dump without any wrapper
+#   - YAML-style:              key-value flat format observed in practice
+#   - Pipe-delimited:          |tool| name |key| value |/tool| style
+#   - ASCII-pipe DSML:         <|DSML|> with ASCII | not fullwidth ｜
 #   - Kimi native — NOT included here on purpose: your code already parses
 #     it correctly (_parse_kimi_native_tools), so it's not an "alien" case.
 # ════════════════════════════════════════════════════════════════════════
@@ -229,6 +240,109 @@ def _render_glm(tool, args):
     return f'<tool_call>{tool}{params}</tool_call>'
 
 
+def _render_claude_xml(tool, args):
+    # Claude 3.5/3.7/4.x native XML: <function_calls><invoke name="..."><parameter ...>
+    # Source: docs.anthropic.com/en/docs/tool-use/how-to-use-tools
+    params = "\n    ".join(f'<parameter name="{k}">{v}</parameter>' for k, v in args.items())
+    return f'<function_calls>\n  <invoke name="{tool}">\n    {params}\n  </invoke>\n</function_calls>'
+
+
+def _render_minimax_bracket(tool, args):
+    # MiniMax M2/M2.5/M3 bracket style: [TOOL_CALL]{...}[/TOOL_CALL]
+    # Source: huggingface.co/MiniMaxAI/MiniMax-M2/docs/tool_calling_guide.md
+    payload = json.dumps({"tool": tool, "args": args}, indent=2)
+    return f'[TOOL_CALL]\n{payload}\n[/TOOL_CALL]'
+
+
+def _render_gemma(tool, args):
+    # FunctionGemma / Gemma 3: <start_function_call>call:func{...}<end_function_call>
+    # Source: ai.google.dev/gemma/docs/function-calling
+    arg_str = ", ".join(f'{k}="{v}"' for k, v in args.items())
+    return f'<start_function_call>\ncall:{tool}{{{arg_str}}}\n<end_function_call>'
+
+
+def _render_gemma4_thinking(tool, args):
+    # Gemma 4 thinking models: <|tool_call>call:func{args}<tool_call|>
+    arg_str = ", ".join(f'{k}="{v}"' for k, v in args.items())
+    return f'<|tool_call>call:{tool}{{{arg_str}}}<tool_call|>'
+
+
+def _render_nemotron_llama(tool, args):
+    # Llama-based Nemotron (Ultra/Super): <|python_tag|>func(args)<|eom_id|>
+    # Source: build.nvidia.com/nvidia/llama-3_1-nemotron-ultra-253b-v1
+    arg_str = ", ".join(f'{k}="{v}"' for k, v in args.items())
+    if RNG.choice([True, False]):
+        return f'<|python_tag|>{tool}({arg_str})<|eom_id|>'
+    else:
+        return f'<|python_tag|>{json.dumps({"name": tool, "parameters": args})}<|eom_id|>'
+
+
+def _render_nemotron_native(tool, args):
+    # Native NVIDIA Nemotron-4/Mini: <extra_id_1>...<toolcall>{...}</toolcall>
+    # Source: huggingface.co/nvidia/Nemotron-Mini-4B-Instruct
+    payload = json.dumps({"name": tool, "arguments": args})
+    return f'<extra_id_1>Assistant\n<toolcall>\n{payload}\n</toolcall>'
+
+
+def _render_qwen_legacy(tool, args):
+    # Legacy Qwen-Agent: ✿FUNCTION✿: name\n✿ARGS✿: {...}\n✿RESULT✿:
+    # Source: github.com/QwenLM/Qwen-Agent
+    return f'\u273fFUNCTION\u273f: {tool}\n\u273fARGS\u273f: {json.dumps(args)}\n\u273fRESULT\u273f:'
+
+
+def _render_plain_json(tool, args):
+    # Plain JSON blob with 'tool', 'name', or 'function_name' key — no wrapper.
+    style = RNG.choice(["tool_key", "name_key", "function_name_key"])
+    indent = RNG.choice([None, 2])
+    if style == "tool_key":
+        d = {"tool": tool}
+        d.update(args)
+        return json.dumps(d, indent=indent)
+    elif style == "name_key":
+        return json.dumps({"name": tool, "arguments": args}, indent=indent)
+    else:
+        return json.dumps({"function_name": tool, "parameters": args}, indent=indent)
+
+
+def _render_yaml_style(tool, args):
+    # YAML-like key-value flat format observed in practice
+    lines = [f"tool: {tool}"]
+    for k, v in args.items():
+        safe_v = str(v)
+        lines.append(f'{k}: "{safe_v}"' if " " in safe_v else f"{k}: {safe_v}")
+    return "\n".join(lines)
+
+
+def _render_pipe_delimited(tool, args):
+    # Pipe-delimited: |tool| name |key| value |/tool|
+    inner = " ".join(f"|{k}| {v}" for k, v in args.items())
+    return f"|tool| {tool} {inner} |/tool|"
+
+
+def _render_dsml_ascii(tool, args):
+    # ASCII-pipe variant of DeepSeek DSML (<|DSML|> with | not ｜)
+    # Observed when models respond without fullwidth unicode
+    params = ", ".join(f'{k}="{v}"' for k, v in args.items())
+    return f'<|DSML|>{{invoke tool_name={tool}, {params}}}<|DSML|>'
+
+
+def _render_yaml_multiline(tool, args):
+    # YAML-style with dashes/blocks, more structured than _render_yaml_style
+    lines = ["---", f"tool: {tool}", "arguments:"]
+    for k, v in args.items():
+        lines.append(f"  {k}: \"{v}\"")
+    lines.append("---")
+    return "\n".join(lines)
+
+
+def _render_markdown_bold(tool, args):
+    # Markdown-style bold labels: **Tool:** name **Query:** ...
+    parts = [f"**Tool:** {tool}"]
+    for k, v in args.items():
+        parts.append(f"**{k.capitalize()}:** {v}")
+    return "  \n".join(parts)
+
+
 ALIEN_RENDERERS = [
     _render_deepseek_dsml,
     _render_deepseek_v3_old,
@@ -238,6 +352,20 @@ ALIEN_RENDERERS = [
     _render_raw_json_leak,
     _render_pythonic,
     _render_glm,
+    # New formats added from cross-model research:
+    _render_claude_xml,
+    _render_minimax_bracket,
+    _render_gemma,
+    _render_gemma4_thinking,
+    _render_nemotron_llama,
+    _render_nemotron_native,
+    _render_qwen_legacy,
+    _render_plain_json,
+    _render_yaml_style,
+    _render_pipe_delimited,
+    _render_dsml_ascii,
+    _render_yaml_multiline,
+    _render_markdown_bold,
 ]
 
 
@@ -351,6 +479,18 @@ SYSTEM_RESULT_ECHO = [
     "[SYSTEM — {t} result:]\n[exit 0]\nAll 12 tests passed.",
 ]
 
+# Hard negatives: JSON/YAML that is NOT a tool call (code, config, examples)
+JSON_YAML_PROSE = [
+    'Here\'s the config format:\n```json\n{{"tool": "hammer", "size": 12}}\n```\nNote: this is not a tool call.',
+    'The response schema looks like:\n```\n{{"name": "{t}", "status": "ok"}}\n```',
+    'In YAML, the config would be:\n```yaml\ntool: linter\nquery: check all\n```',
+    'The JSON payload has fields like "tool" and "name" that map to the internal ID.',
+    'Example API response:\n{{"function_name": "handler", "result": 42}}',
+    'Here\'s what the test fixture expects:\n```\ntool: {t}\nquery: test input\n```\nThis is just test data.',
+    'The OpenAI format returns:\n```json\n{{"type": "function", "function": {{"name": "{t}", "arguments": {{}}}}}}\n```',
+    'Your config.yaml should have:\n```\ntool: webpack\nquery: build\n```',
+]
+
 
 def _wrap_code_fence(s: str) -> str:
     return f"```\n{s}\n```"
@@ -398,6 +538,10 @@ def gen_negative() -> str:
         "prose_mention_no_tag",
         "unrelated",
         "system_echo",
+        "json_yaml_prose", "json_yaml_prose",   # JSON/YAML that is NOT a
+                                                  # tool call — teaches the
+                                                  # classifier that mere JSON
+                                                  # structure isn't enough
     ])
 
     if kind == "own_format":
@@ -426,6 +570,10 @@ def gen_negative() -> str:
     if kind == "system_echo":
         tool = RNG.choice(TOOL_NAMES)
         return RNG.choice(SYSTEM_RESULT_ECHO).format(t=tool, q=RNG.choice(QUERY_POOL))
+
+    if kind == "json_yaml_prose":
+        tool = RNG.choice(TOOL_NAMES)
+        return RNG.choice(JSON_YAML_PROSE).format(t=tool)
 
     # unrelated
     return RNG.choice(UNRELATED_PROSE)
@@ -580,10 +728,37 @@ def mine_from_chat_histories() -> tuple[list, list]:
 
 _KNOWN_TOOL_RE = re.compile(r'\b(' + '|'.join(re.escape(t) for t in TOOL_NAMES) + r')\b')
 _ALIEN_MARKER_RE = re.compile(
-    # \| = ASCII pipe (DeepSeek v3/R1 old format, raw-JSON leak)
+    # Structural markers that are unambiguous signs of a native tool-call block.
     # ｜ = U+FF5C fullwidth vertical line (actual DeepSeek DSML production output)
-    r'(<\|tool[▁_]|tool_call_begin|<\|DSML\||<｜DSML｜|<tool_call>|<minimax:tool_call>|'
-    r'<invoke\s+name=|function_calls>|<function=)'
+    r'('
+    # ── DeepSeek ──────────────────────────────────────────────────────────
+    r'<\|tool[▁_]'               # old V3/R1: <|tool▁calls▁begin|
+    r'|tool_call_begin'           # old V3/R1 inner marker
+    r'|<\|DSML\|'                 # DSML ASCII-pipe variant
+    r'|<｜DSML｜'                  # DSML fullwidth ｜
+    # ── Qwen / Hermes ─────────────────────────────────────────────────────
+    r'|<tool_call>'               # Hermes, Qwen2.5, Qwen3, GLM
+    r'|✿FUNCTION✿'             # legacy Qwen-Agent ✿FUNCTION✿
+    # ── MiniMax ───────────────────────────────────────────────────────────
+    r'|<minimax:tool_call>'       # MiniMax XML style
+    r'|\[TOOL_CALL\]'             # MiniMax bracket style
+    # ── Claude ────────────────────────────────────────────────────────────
+    r'|<invoke\s+name='           # Claude / Anthropic XML
+    r'|function_calls>'           # Claude / Pythonic wrapper
+    # ── Gemma / FunctionGemma ─────────────────────────────────────────────
+    r'|<start_function_call>'     # Gemma 3 / FunctionGemma
+    r'|<\|tool_call>'             # Gemma 4 thinking token
+    r'|call:[a-z_]+\{'            # Gemma call:func{...} syntax
+    # ── Nemotron ──────────────────────────────────────────────────────────
+    r'|<\|python_tag\|>'          # Llama-based Nemotron
+    r'|<toolcall>'                # Native Nemotron-4/Mini
+    r'|<extra_id_'                # Native Nemotron system markers
+    # ── Misc / generic ────────────────────────────────────────────────────
+    r'|<function='                # Qwen3-Coder nested
+    r'|\|tool\|'                  # pipe-delimited format
+    r'|"tool"\s*:'                # plain JSON blob with "tool" key
+    r'|"function_name"\s*:'       # plain JSON blob with "function_name" key
+    r')'
 )
 _OWN_TAG_RE = re.compile(
     r'</?(' + '|'.join(re.escape(t) for t in TOOL_NAMES) + r')(\s|>|/>)'
@@ -652,7 +827,31 @@ class AlienFormatDetector:
         return (p >= threshold), p
 
     def save(self, path=MODEL_PATH):
-        joblib.dump(self, path)
+        # Ensure the class is pickled as train_alien_format_classifier.AlienFormatDetector
+        # and NOT as __main__.AlienFormatDetector.
+        #
+        # Problem: when the script runs directly (__name__ == '__main__'), the class
+        # lives in __main__ and pickle records it there.  When emperor_agent loads it,
+        # __main__ is emperor_agent — no AlienFormatDetector → AttributeError.
+        #
+        # Python 3.14 fix: register the current __main__ module under the canonical
+        # module name in sys.modules, AND patch __module__ on the class.  Pickle then
+        # finds the class at 'train_alien_format_classifier.AlienFormatDetector' and
+        # verifies it successfully.
+        import sys as _sys
+        main_mod = _sys.modules.get("__main__")
+        already_registered = "train_alien_format_classifier" in _sys.modules
+        if not already_registered and main_mod is not None:
+            _sys.modules["train_alien_format_classifier"] = main_mod
+        orig_module = self.__class__.__module__
+        self.__class__.__module__ = "train_alien_format_classifier"
+        try:
+            joblib.dump(self, path)
+        finally:
+            self.__class__.__module__ = orig_module
+            if not already_registered:
+                _sys.modules.pop("train_alien_format_classifier", None)
+
 
     @staticmethod
     def load(path=MODEL_PATH) -> "AlienFormatDetector":
@@ -731,9 +930,10 @@ def eval_manual_examples(det: AlienFormatDetector):
     n_correct = 0
     for text, expected in cases:
         pred, p = det.predict(text)
-        ok = "✓" if int(pred) == expected else "✗ MISMATCH"
+        ok = "OK" if int(pred) == expected else "MISMATCH"
         n_correct += int(pred) == expected
-        print(f"  [{ok}] expected={expected} got={int(pred)} (p={p:.2f}) | {text[:70]!r}")
+        snippet = text[:70].encode("ascii", errors="backslashreplace").decode("ascii")
+        print(f"  [{ok}] expected={expected} got={int(pred)} (p={p:.2f}) | {snippet!r}")
     print(f"{n_correct}/{len(cases)} correct")
 
 

@@ -88,7 +88,7 @@ TILING_GRID = (2, 2)
 # Useful for clean, already high-contrast input images.
 IMAGE_ENHANCE = False
 
-GOOGLE_MODEL         = "gemini-3.5-flash"
+GOOGLE_MODEL         = "gemini-3.5-flash-lite"
 GOOGLE_THINKING_TYPE = "native"
 GOOGLE_VISION        = True
 
@@ -208,7 +208,7 @@ RERANKER_MODEL              = "nvidia/llama-nemotron-rerank-vl-1b-v2"
 RERANKER_URL                = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking"
 # NVIDIA reranker hard limit is 512 tokens per passage.
 # 1800 chars ≈ 450 tokens @ 4 chars/token — comfortably under the limit.
-RERANKER_MAX_PASSAGE_CHARS  = 1800
+RERANKER_MAX_PASSAGE_CHARS  = 8000
 
 TOKEN_SAFETY_MARGIN    = 1.05
 

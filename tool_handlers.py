@@ -1014,11 +1014,8 @@ class ToolHandlersMixin:
         if getattr(config, "SEMANTIC_SCHOLAR_API_KEY_FILE", ""):
             api_key = read_api_key_cached(config.SEMANTIC_SCHOLAR_API_KEY_FILE)
         if not api_key:
-            return (
-                "[SYSTEM: ERROR] Semantic Scholar API key not configured. "
-                "Set SEMANTIC_SCHOLAR_API_KEY_FILE in .env and add your key. "
-                "Free key at semanticscholar.org/product/api."
-            )
+            # Semantic Scholar is fully public — key is optional (higher rate limits only).
+            console.print("[dim]ℹ️  No Semantic Scholar API key — running unauthenticated (1 req/s limit)[/dim]")
 
         url = "https://api.semanticscholar.org/graph/v1/paper/search"
         params = {
@@ -1032,11 +1029,13 @@ class ToolHandlersMixin:
         year_note = f" [{year_filter}]" if year_filter else ""
         console.print(f"📚 [dim]search_semantic_scholar: '{query[:60]}'{year_note} (limit={limit})...[/dim]")
 
+        headers = {"x-api-key": api_key} if api_key else {}
+
         try:
             resp = requests.get(
                 url,
                 params=params,
-                headers={"x-api-key": api_key},
+                headers=headers,
                 timeout=15,
             )
             if resp.status_code == 429:
@@ -1060,9 +1059,6 @@ class ToolHandlersMixin:
             tldr_obj = p.get("tldr")
             tldr     = tldr_obj.get("text") if isinstance(tldr_obj, dict) else None
             abstract = (p.get("abstract") or "").strip()
-            summary  = tldr if tldr else (abstract[:300] + "..." if len(abstract) > 300 else abstract)
-            if not summary:
-                summary = "No abstract or TL;DR available."
 
             ext_ids  = p.get("externalIds") or {}
             doi      = ext_ids.get("DOI")
@@ -1073,7 +1069,17 @@ class ToolHandlersMixin:
             pdf_url  = pdf_obj.get("url") if isinstance(pdf_obj, dict) else None
             pdf_str  = f"\n   PDF: {pdf_url}" if pdf_url else ""
 
-            snippets.append(f"{title} ({year}){ref_str}\n   {summary}{pdf_str}")
+            # Always show both TL;DR and abstract when available
+            body_parts = []
+            if tldr:
+                body_parts.append(f"TL;DR: {tldr}")
+            if abstract:
+                body_parts.append(f"Abstract: {abstract}")
+            if not body_parts:
+                body_parts.append("No abstract or TL;DR available.")
+            body_str = "\n   ".join(body_parts)
+
+            snippets.append(f"{title} ({year}){ref_str}\n   {body_str}{pdf_str}")
 
         # Rerank by relevance — same NVIDIA cross-encoder used by quick_search.
         # Falls back to original order if NVIDIA key absent or reranker fails.
