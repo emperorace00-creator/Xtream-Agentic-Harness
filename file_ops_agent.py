@@ -16,9 +16,10 @@ class FileOpsAgent:
     Primary tool: str_replace — modify only what's needed.
     """
 
-    def __init__(self, workspace_root: str = None, workspace_tracker=None):
+    def __init__(self, workspace_root: str = None, workspace_tracker=None, code_search_agent=None):
         self.workspace_root = workspace_root if workspace_root is not None else config.SCRATCH_DIR
         self.tracker = workspace_tracker
+        self.code_search_agent = code_search_agent
 
     def search_workspace(self, query: str, file_filter: str = None, semantic: bool = False) -> str:
         """
@@ -26,21 +27,33 @@ class FileOpsAgent:
 
         Args:
             query:       Exact string/regex (semantic=False) or concept (semantic=True)
-            file_filter: Optional glob filter e.g. '*.py' — only used in grep mode
-            semantic:    True = BM25 concept search, False = grep (default)
+            file_filter: Optional glob filter e.g. '*.py' — used in grep mode and
+                         Codestral Embed semantic search
+            semantic:    True = Codestral Embed concept search (BM25 fallback),
+                         False = grep (default)
         """
 
         # ── Semantic mode ──────────────────────────────────────────────────────
         if semantic:
+            # Primary: Codestral Embed semantic code search
+            if self.code_search_agent:
+                try:
+                    return self.code_search_agent.search(query, top_k=8, file_filter=file_filter)
+                except Exception as e:
+                    console.print(f"[yellow]⚠️ Semantic code search failed: {e} — falling back to BM25[/yellow]")
+
+            # Fallback: BM25 keyword search (if embed API unreachable)
             # min_score=0.01: BM25 scores are raw (not normalized 0–1), so any
             # non-zero score means at least one query token matched. Strong matches
             # score 1–20+. Setting floor to 0.01 filters only true zero-match files.
             if self.tracker:
-                results = self.tracker.semantic_search(query, top_k=8, min_score=0.01)
+                results = self.tracker.semantic_search(query, top_k=8, min_score=0.01,
+                                                         file_filter=file_filter)
                 if not results:
                     return (
                         f"No semantically related files found for '{query}'.\n"
-                        f"Tip: try grep mode (semantic=False) for exact string matches."
+                        f"Tip: try grep mode (semantic=False) for exact string matches.\n"
+                        f"[SYSTEM: Note — used keyword search (BM25) as fallback. Semantic index unavailable.]"
                     )
                 lines = [f"[SYSTEM: SEMANTIC SEARCH: '{query}'] — {len(results)} result(s)\n"]
                 for r in results:
@@ -48,6 +61,7 @@ class FileOpsAgent:
                         f"  📄 {r['path']}  (score: {r['score']}, {r['language']})\n"
                         f"     {r['preview']}"
                     )
+                lines.append("[SYSTEM: Note — used keyword search (BM25) as fallback. Semantic index unavailable.]")
                 return "\n".join(lines)
             return "Semantic search is disabled (no tracker attached)."
 

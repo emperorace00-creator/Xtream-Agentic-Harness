@@ -34,7 +34,7 @@ RULES:
   memory. Your own earlier power calls stay visible in this conversation's
   history even after a power is turned off, so seeing one you used before
   isn't proof it's still available now. (The user can turn availability of specific powers on or off between turns)
-- These are not tools, these are powers.
+- Don't mess up the syntax of powers, use only the syntax given below.
 - If you want to use a power, the XML tag must appear in your actual response — not just in your thinking/reasoning trace. The runtime reads only your final response, not your thoughts.
 """
 
@@ -215,7 +215,8 @@ To delete a block, leave <new_str> empty:
 
 ---
 
-**view_lines** — read a segment of a file. Works on any path: /workspace, /uploads, /outputs, and absolute host paths (e.g. from search_history results).
+**view_lines** — read a segment of a file. `start` defaults to 1; omit `end` to read to the end of the file.
+Works on any path: /workspace, /uploads, /outputs, and absolute host paths (e.g. from search_history results).
 
 <view_lines>
 <file>/uploads/reference.py</file>
@@ -225,13 +226,23 @@ To delete a block, leave <new_str> empty:
 
 ---
 
-**search_in_file** — search within a single known file. regex=true for regex patterns.
+**search_in_file** — search within a single known file.
+`context_lines` = lines before/after each match (default 3). `max_results` caps total matches returned (default 10).
 Works on any path: /workspace, /uploads, /outputs, and absolute host paths (e.g. from search_history results).
 
 <search_in_file>
 <file>/uploads/notes.md</file>
 <pattern>osmosis</pattern>
 <context_lines>3</context_lines>
+</search_in_file>
+
+For regex patterns, set `regex=true`:
+
+<search_in_file>
+<file>/uploads/server.py</file>
+<pattern>def \w+_handler</pattern>
+<regex>true</regex>
+<max_results>5</max_results>
 </search_in_file>
 
 ---
@@ -245,15 +256,16 @@ Works on any path: /workspace, /uploads, /outputs, and absolute host paths (e.g.
 
 ---
 
-**workspace_search** — search across your saved notes and scratch files.
-Default is exact match (grep). Set semantic=true for BM25 keyword-concept search — matches files where your query tokens appear.
+**workspace_search** — search across your codebase and scratch files.
+Default is exact match (grep). Set semantic=true for concept-level code search — finds
+relevant functions and classes even when your exact words don't appear in the code.
 
 <workspace_search>
-<query>Newton's laws of motion</query>
+<query>_parse_pseudo_tools</query>
 </workspace_search>
 
 <workspace_search>
-<query>photosynthesis light reactions</query>
+<query>where do we handle rate limit errors</query>
 <semantic>true</semantic>
 </workspace_search>
 
@@ -311,7 +323,7 @@ For best results emit 2-3 calls with varied phrasings in one response.
 ocr'ed pdf contents may have some inconsistency/typos introduced during the text extraction, so try your best to understand the text.
 ---
 
-**view_lines** — read a line range directly from the OCR'd .txt in scratch.
+**view_lines** — read a line range directly from the OCR'd .txt in scratch. `start` defaults to 1; omit `end` to read to the end of the file.
 Use this to read surrounding context after doc_search returns line numbers,
 or to read the document sequentially (e.g. "first 5 pages").
 

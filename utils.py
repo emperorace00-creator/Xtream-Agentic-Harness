@@ -694,6 +694,217 @@ def _embed_batched(texts: list, input_type: str = "passage") -> list:
     return all_embeddings
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# MISTRAL CODESTRAL EMBED API
+#
+# Separate from _embed()/_embed_batched() above (NVIDIA Nemotron, used for
+# doc_search + search_history). Codestral Embed is served from Mistral's own
+# endpoint with a different request/response shape:
+#   - "input" (singular) in the raw REST body — the Python SDK uses "inputs"
+#     but we use requests.post directly
+#   - no input_type — same model/projection for query and passage text
+#   - "output_dimension" selects a Matryoshka-truncated embedding size
+#   - built-in 8192-token truncation server-side, no "truncate" flag needed
+# Used exclusively by code_search_agent.py for workspace_search(semantic=true).
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _embed_code(texts: list) -> list:
+    """
+    Embed code snippets via Mistral Codestral Embed.
+
+    Args:
+        texts: List of strings to embed (raw code or enriched embed_text).
+
+    Returns:
+        List of embedding vectors (list of float), same order as input.
+
+    Raises:
+        RuntimeError on non-200 response (caller handles retries/fallback).
+    """
+    api_key = read_api_key_cached(config.MISTRAL_API_KEY_FILE)
+    if not api_key:
+        raise RuntimeError(
+            "MISTRAL_API_KEY_FILE is not configured — semantic code search "
+            "needs a Mistral API key. Set MISTRAL_API_KEY_FILE in .env."
+        )
+
+    payload = {
+        "model":            config.CODE_EMBED_MODEL,
+        "input":            texts,                      # REST API uses 'input' (singular); SDK uses 'inputs'
+        "output_dimension": config.CODE_EMBED_DIMENSION,
+    }
+
+    for attempt in range(3):
+        try:
+            resp = requests.post(
+                f"{config.CODE_EMBED_BASE_URL}/embeddings",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type":  "application/json",
+                },
+                json=payload,
+                timeout=120,
+            )
+
+            if resp.status_code == 429:
+                wait = 5 * (attempt + 1)
+                console.print(f"[yellow]⏳ Codestral Embed rate-limited. Waiting {wait}s...[/yellow]")
+                time.sleep(wait)
+                continue
+
+            if resp.status_code >= 500:
+                console.print(f"[yellow]⚠️  Codestral Embed server error {resp.status_code}. Retrying...[/yellow]")
+                time.sleep(3)
+                continue
+
+            if resp.status_code != 200:
+                raise RuntimeError(f"Codestral Embed API error {resp.status_code}: {resp.text[:200]}")
+
+            data  = resp.json()
+            items = sorted(data["data"], key=lambda x: x["index"])
+            return [item["embedding"] for item in items]
+
+        except RuntimeError:
+            raise
+        except Exception as e:
+            if attempt == 2:
+                raise RuntimeError(f"Codestral Embed request failed: {e}")
+            time.sleep(2)
+
+    raise RuntimeError("Codestral Embed: max retries exceeded")
+
+
+_CL100K_ENCODING = None
+
+
+def _estimate_code_tokens(text: str) -> int:
+    """
+    Rough token count for batch-sizing purposes only — cl100k_base as a
+    stand-in for Codestral's own (non-public) tokenizer. Good enough to keep
+    requests under the server-side limit with headroom; not used for billing
+    or anything that needs to be exact.
+    """
+    global _CL100K_ENCODING
+    if _CL100K_ENCODING is None:
+        _CL100K_ENCODING = tiktoken.get_encoding("cl100k_base")
+    return len(_CL100K_ENCODING.encode(text or ""))
+
+
+def _embed_code_range(texts: list, start: int, end: int, out: list) -> None:
+    """
+    Embed texts[start:end] into out[start:end] in place. On failure, bisect
+    the range and retry each half — so one oversized/malformed chunk in a
+    64-item batch only costs that one chunk (a None placeholder), not the
+    other ~63. A range of size 1 that still fails is the base case.
+    """
+    batch = texts[start:end]
+    try:
+        embeddings = _embed_code(batch)
+        out[start:end] = embeddings
+    except Exception as e:
+        if end - start <= 1:
+            console.print(f"   [red]Code embed failed for 1 chunk: {e}[/red]")
+            out[start] = None
+            return
+        mid = start + (end - start) // 2
+        _embed_code_range(texts, start, mid, out)
+        _embed_code_range(texts, mid, end, out)
+
+
+def _embed_code_batched(texts: list) -> tuple:
+    """
+    Embed code chunk texts in batches capped by item count
+    (config.CODE_EMBED_BATCH_SIZE), by estimated aggregate token count
+    (config.CODE_EMBED_TOKEN_CAP), and by estimated per-chunk token count
+    (config.CODE_EMBED_MAX_CHUNK_TOKENS) — see config.py for why each of
+    these is sized the way it is. tiktoken's cl100k_base is used as an
+    estimate throughout, not ground truth, since Codestral's own tokenizer
+    isn't public.
+
+    Any single chunk whose estimate exceeds CODE_EMBED_MAX_CHUNK_TOKENS is
+    skipped before it's ever sent: Codestral Embed truncates an over-limit
+    input server-side rather than rejecting it (see _embed_code's
+    docstring), so sending it "succeeds" but silently embeds only the first
+    ~8192 tokens — a quality regression with no error to catch. Skipping it
+    up front turns that into a visible None instead.
+
+    Returns (embeddings, oversized_indices):
+      - embeddings:        flat list of embeddings (or None) in original order.
+        On a batch failure (e.g. a 429, or a request that still slips past
+        the aggregate token cap), the batch is bisected and retried rather
+        than discarded outright — only a chunk that still fails on its own
+        yields a None placeholder, so one bad chunk doesn't take the rest of
+        its batch down with it.
+      - oversized_indices: set of original indices skipped by the pre-filter
+        above. These are a *permanent*, deterministic skip (the chunk will
+        estimate over the ceiling again on every future attempt), unlike a
+        None from a transient batch failure, which is worth retrying. Callers
+        use this to tell "this chunk can never be embedded, stop retrying it"
+        apart from "this chunk failed this time, try again next build."
+    """
+    all_embeddings: list = [None] * len(texts)
+    if not texts:
+        return all_embeddings, set()
+
+    item_cap  = config.CODE_EMBED_BATCH_SIZE
+    token_cap = config.CODE_EMBED_TOKEN_CAP
+    max_chunk = config.CODE_EMBED_MAX_CHUNK_TOKENS
+
+    token_counts = [_estimate_code_tokens(t) for t in texts]
+
+    # ── Pre-filter: chunks too large for the model, full stop ──────────
+    indexable = []
+    oversized: set = set()
+    for i, est in enumerate(token_counts):
+        if est > max_chunk:
+            console.print(
+                f"   [yellow]⚠️ Code chunk #{i} is ~{est} estimated tokens — "
+                f"over the {max_chunk}-token safety ceiling for Codestral "
+                f"Embed's 8192-token context. Skipping it rather than risking "
+                f"silent server-side truncation of the tail.[/yellow]"
+            )
+            oversized.add(i)
+            continue
+        indexable.append(i)
+
+    if not indexable:
+        return all_embeddings, oversized
+
+    # Build batch boundaries (over the indexable subset) respecting both
+    # the item cap and the conservative aggregate token cap.
+    batches = []   # list of lists of original indices
+    start = 0
+    n = len(indexable)
+    while start < n:
+        end       = start
+        tok_count = 0
+        while end < n and (end - start) < item_cap:
+            t = token_counts[indexable[end]]
+            if end > start and tok_count + t > token_cap:
+                break
+            tok_count += t
+            end += 1
+        if end == start:
+            end = start + 1   # single item already at/over the aggregate cap alone
+        batches.append(indexable[start:end])
+        start = end
+
+    for bi, idxs in enumerate(batches):
+        console.print(
+            f"   [dim]Embedding code batch {bi + 1}/{len(batches)} "
+            f"({len(idxs)} chunks)...[/dim]"
+        )
+        batch_texts = [texts[i] for i in idxs]
+        out         = [None] * len(idxs)
+        _embed_code_range(batch_texts, 0, len(batch_texts), out)
+        for local_i, global_i in enumerate(idxs):
+            all_embeddings[global_i] = out[local_i]
+        if bi + 1 < len(batches):
+            time.sleep(0.5)
+
+    return all_embeddings, oversized
+
+
 def _cosine_similarity(query_vec: list, passage_vecs: list) -> np.ndarray:
     """
     Compute cosine similarity between a single query vector and a matrix

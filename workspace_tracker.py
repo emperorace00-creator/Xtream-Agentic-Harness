@@ -2,6 +2,7 @@
 import os
 import re
 import glob
+import fnmatch
 import hashlib
 import json
 import time
@@ -301,7 +302,8 @@ class WorkspaceTracker:
     # BM25 SEMANTIC SEARCH
     # ══════════════════════════════════════════════════════════════════════════
 
-    def semantic_search(self, query: str, top_k: int = 5, min_score: float = 0.01) -> list:
+    def semantic_search(self, query: str, top_k: int = 5, min_score: float = 0.01,
+                         file_filter: str = None) -> list:
         """
         BM25 semantic search across all tracked file contents.
 
@@ -317,9 +319,13 @@ class WorkspaceTracker:
           token matched. Scores of 1-20+ are typical strong matches.
 
         Args:
-            query:     Natural language or keyword query
-            top_k:     Max results to return
-            min_score: Minimum BM25 score threshold (filters zero-match files)
+            query:       Natural language or keyword query
+            top_k:       Max results to return
+            min_score:   Minimum BM25 score threshold (filters zero-match files)
+            file_filter: Optional glob filter e.g. '*.py' matched against each
+                         candidate's basename. Mirrors CodeSearchAgent.search()'s
+                         file_filter so callers see consistent filtering whether
+                         they hit the primary semantic index or this BM25 fallback.
 
         Returns:
             List of dicts: {path, score, preview, language}
@@ -362,6 +368,13 @@ class WorkspaceTracker:
                 break  # scores are sorted descending — safe early exit
 
             rel_path = self._bm25_paths[idx]
+
+            # file_filter: skip non-matching candidates but keep scanning —
+            # ranked is globally sorted by score, so a filtered-out doc here
+            # doesn't mean lower-ranked docs should also be skipped.
+            if file_filter and not fnmatch.fnmatch(os.path.basename(rel_path), file_filter):
+                continue
+
             content  = self._bm25_index.get(rel_path, "")
 
             # Lazily hydrate from disk if content is a cache stub (empty string).

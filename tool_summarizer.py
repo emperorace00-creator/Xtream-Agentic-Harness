@@ -159,6 +159,11 @@ class ToolCallSummarizer:
             or result.startswith("No matches")
             or result.startswith("No semantically related")
             or result.startswith("Semantic search is disabled")
+            # CodeSearchAgent.search()'s genuine-miss path (empty/filtered-out
+            # workspace) shares the same "[SYSTEM: CODE SEARCH: '...']" prefix
+            # as a real hit, so it can't be told apart by prefix alone — match
+            # on the fixed phrase that only appears in the miss message.
+            or "no indexed code chunks available" in result
         )
         if no_hit:
             return f"workspace_search('{query}') → 0 line(s)"

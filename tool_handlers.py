@@ -283,7 +283,7 @@ class ToolHandlersMixin:
         query = args.get('query', '')
         file_filter = args.get('file_filter')
         _sem_raw = args.get('semantic', False)
-        semantic = str(_sem_raw).lower() == 'true' if isinstance(_sem_raw, str) else bool(_sem_raw)
+        semantic = str(_sem_raw).strip().lower() == 'true' if isinstance(_sem_raw, str) else bool(_sem_raw)
         return self.file_ops.search_workspace(query, file_filter, semantic=semantic)
 
     def _handle_doc_search(self, args: dict, web_agent) -> str:
@@ -370,6 +370,11 @@ class ToolHandlersMixin:
         # note depends on files just written to SCRATCH_DIR, which doesn't
         # touch UPLOADS_FOLDER's mtime, so the cache wouldn't otherwise notice.
         self._uploads_cache = None
+
+        # Mark code search index stale — a new .txt was written to scratch
+        # regardless of whether doc_search embedding succeeded.
+        if hasattr(self, 'code_search_agent') and self.code_search_agent:
+            self.code_search_agent.mark_stale()
 
         # Bug 4 (second layer): don't imply doc_search will work just because
         # text extraction succeeded — surface it plainly when embedding failed
@@ -465,6 +470,10 @@ class ToolHandlersMixin:
         # Invalidate the uploads-scan cache, mirroring ingest_pdf's cache invalidation
         self._uploads_cache = None
 
+        # Mark code search index stale — a new .txt was written to scratch.
+        if hasattr(self, 'code_search_agent') and self.code_search_agent:
+            self.code_search_agent.mark_stale()
+
         return (
             f"✅ Text ingested: '{filename}' → {result['chunks']} embedded chunks. "
             f"Use doc_search to query it."
@@ -505,6 +514,10 @@ class ToolHandlersMixin:
                 verify=args.get('verify', True),
                 count=count,
             )
+            # Mark code search index as stale (actual re-embed happens lazily on next semantic query)
+            if isinstance(result, dict) and result.get("success"):
+                if hasattr(self, 'code_search_agent') and self.code_search_agent:
+                    self.code_search_agent.mark_stale()
             return json.dumps(result, indent=2)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
@@ -828,6 +841,9 @@ class ToolHandlersMixin:
                     self.workspace_tracker.reconcile_workspace()
                 except Exception:
                     pass
+                # Mark code search index as stale (actual re-embed happens lazily on next semantic query)
+                if hasattr(self, 'code_search_agent') and self.code_search_agent:
+                    self.code_search_agent.mark_stale()
                 return "[SYSTEM: BASH ERROR] Command timed out after 120 seconds."
             except KeyboardInterrupt:
                 process.kill()
@@ -857,6 +873,10 @@ class ToolHandlersMixin:
             self.workspace_tracker.reconcile_workspace()
         except Exception as _re:
             console.print(f"[dim yellow]post-bash reconcile failed: {_re}[/dim yellow]")
+
+        # Mark code search index as stale (actual re-embed happens lazily on next semantic query)
+        if hasattr(self, 'code_search_agent') and self.code_search_agent:
+            self.code_search_agent.mark_stale()
 
         # Container not running / doesn't exist
         if process.returncode == 125:

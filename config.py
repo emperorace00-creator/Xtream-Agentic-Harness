@@ -194,6 +194,11 @@ LINKUP_API_KEY_FILE           = os.environ.get("LINKUP_API_KEY_FILE", "")
 CLOUDFLARE_API_KEY_FILE       = os.environ.get("CLOUDFLARE_API_KEY_FILE", "")
 TOKEN_ROUTER_API_KEY_FILE     = os.environ.get("TOKEN_ROUTER_API_KEY_FILE", "")
 SEMANTIC_SCHOLAR_API_KEY_FILE = os.environ.get("SEMANTIC_SCHOLAR_API_KEY_FILE", "")
+# Mistral Codestral Embed — separate provider from NVIDIA, used only for
+# semantic code search (workspace_search semantic=true). See _embed_code()
+# in utils.py — the API shape (endpoint, payload keys) differs from the
+# NVIDIA _embed() used everywhere else.
+MISTRAL_API_KEY_FILE          = os.environ.get("MISTRAL_API_KEY_FILE", "")
 
 # -- LIMITS & TUNING ----------------------------------------------------------
 EMPEROR_MAX_TOKENS  = 150000
@@ -218,6 +223,39 @@ EMBED_CHUNK_SIZE      = 1600   # chars (~400 tokens at 4 chars/token)
 EMBED_CHUNK_OVERLAP   = 200    # chars overlap between consecutive chunks
 EMBED_MIN_CHUNK_CHARS = 100    # discard chunks shorter than this
 EMBED_BATCH_SIZE      = 32     # passages per embedding API call
+
+# -- CODE SEARCH (SEMANTIC) ---------------------------------------------------
+# Powers workspace_search(semantic=true). Separate model/provider from
+# EMBED_MODEL above (Nemotron/NVIDIA, used for doc_search + search_history) —
+# see the "Critical Discovery" section of implementation_plan.md for why
+# Codestral Embed needs its own request shape and its own embed function.
+CODE_EMBED_MODEL         = "codestral-embed"          # Mistral model name
+CODE_EMBED_BASE_URL      = "https://api.mistral.ai/v1"
+CODE_EMBED_DIMENSION     = 1024                       # Matryoshka: 256/512/1024/1536/3072
+CODE_EMBED_BATCH_SIZE     = 64                        # item cap per request
+# Codestral Embed's documented context is 8192 tokens/input (Mistral's own
+# Codestral Embed page + OpenRouter's model listing both confirm this; the
+# API truncates a single over-limit input server-side rather than erroring —
+# see the "built-in 8192-token truncation" note on _embed_code() in utils.py).
+# Mistral doesn't publish a separate aggregate-per-request limit for multiple
+# batched inputs, so CODE_EMBED_TOKEN_CAP stays well under 8192 as a
+# conservative stand-in for that unknown number, and CODE_EMBED_MAX_CHUNK_TOKENS
+# guards the true per-item ceiling directly. Both are estimated via tiktoken's
+# cl100k_base (see _estimate_code_tokens in utils.py) — a proxy for Codestral's
+# own (non-public) tokenizer, not ground truth — hence the headroom on each.
+CODE_EMBED_TOKEN_CAP      = 6000     # est. tokens summed across one batched request
+CODE_EMBED_MAX_CHUNK_TOKENS = 7500   # est. tokens for any single chunk — above this,
+                                      # skip it outright instead of risking silent
+                                      # server-side truncation of the tail
+CODE_INDEX_DIR           = os.path.join(DATABASE_DIR, "code_index")
+os.makedirs(CODE_INDEX_DIR, exist_ok=True)
+CODE_CHUNK_MAX_LINES     = 120    # cap per chunk (prevents giant classes becoming one chunk)
+CODE_CHUNK_MIN_LINES     = 3      # discard trivially short chunks
+CODE_INDEX_EXTENSIONS    = {".py", ".js", ".ts", ".go", ".c", ".cpp", ".h", ".java",
+                            ".rs", ".rb", ".php", ".sh", ".sql", ".md", ".txt",
+                            ".yaml", ".yml", ".toml", ".json", ".css", ".html"}
+CODE_INDEX_EXCLUDE       = {".env", ".gitignore"}     # never index these, regardless of extension
+CODE_INDEX_EXCLUDE_DIRS  = {".git", "__pycache__", "node_modules", ".venv", "venv"}
 
 # -- PDF OCR BATCHING ---------------------------------------------------------
 PDF_OCR_BATCH_SIZE  = 4        # pages per parallel OCR batch
@@ -275,4 +313,26 @@ def container_to_host_path(path: str) -> str:
         if path == c_prefix or path.startswith(c_prefix + "/"):
             rel = path[len(c_prefix):].lstrip("/")
             return os.path.join(h_prefix, rel) if rel else h_prefix
+    return path
+
+
+def host_to_container_path(path: str) -> str:
+    """
+    Translate a host-side absolute path to its container-side equivalent.
+    Reverse of container_to_host_path(). Used by code_search_agent.py so the
+    index stores container-style paths (/workspace/scratch/...) — the same
+    form the model already uses in tool calls — instead of host paths.
+    Returns the path unchanged if it does not match any known host prefix.
+    """
+    _map = [
+        (SCRATCH_DIR,    CONTAINER_SCRATCH),
+        (UPLOADS_FOLDER, "/uploads"),
+        (OUTPUTS_DIR,    "/outputs"),
+    ]
+    normed = os.path.normpath(path)
+    for h_prefix, c_prefix in _map:
+        h_normed = os.path.normpath(h_prefix)
+        if normed == h_normed or normed.startswith(h_normed + os.sep):
+            rel = os.path.relpath(normed, h_normed).replace("\\", "/")
+            return f"{c_prefix}/{rel}" if rel != "." else c_prefix
     return path

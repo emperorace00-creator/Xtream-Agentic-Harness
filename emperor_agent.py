@@ -21,6 +21,7 @@ from file_ops_agent import FileOpsAgent
 from tool_summarizer import ToolCallSummarizer
 from doc_search_agent import DocSearchAgent
 from search_history_agent import SearchHistoryAgent
+from code_search_agent import CodeSearchAgent
 
 from core_tool_definitions import (
     PSEUDO_TOOL_FORMAT,
@@ -152,10 +153,16 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
 
             self.workspace_tracker = WorkspaceTracker(workspace_path=config.SCRATCH_DIR)
 
+            self.code_search_agent = CodeSearchAgent(
+                search_dirs=[config.SCRATCH_DIR, config.UPLOADS_FOLDER],
+                index_dir=config.CODE_INDEX_DIR,
+            )
+
             self.ocr_agent    = ocr_agent
             self.file_ops = FileOpsAgent(
                 workspace_root=config.SCRATCH_DIR,
                 workspace_tracker=self.workspace_tracker,
+                code_search_agent=self.code_search_agent,
             )
             self.doc_search_agent = DocSearchAgent(scratch_dir=config.SCRATCH_DIR)
             self.search_history_agent = SearchHistoryAgent()

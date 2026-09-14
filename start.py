@@ -396,8 +396,27 @@ def _run_turn(prompt_payload: str, images=None, uploaded_filenames=None,
                             os.remove(config.WORKSPACE_REGISTRY_FILE)
 
                         emperor.workspace_tracker._load_registry()
-                        emperor.workspace_tracker._bm25_index.clear()
-                        emperor.workspace_tracker._bm25_dirty = True
+                        # Same primitive /restore uses (Bug 11): drop the in-memory
+                        # BM25 index AND delete bm25_corpus.pkl. Clearing only
+                        # memory leaves the pickle on disk; _ensure_index_loaded()
+                        # below then reloads it whenever cache_mtime >=
+                        # registry_mtime. The no-backup branch deletes the
+                        # registry (mtime=0), so the pickle always wins and
+                        # phantom mid-turn paths survive the rollback.
+                        emperor.workspace_tracker.invalidate_bm25_cache()
+
+                        # scratch/ is back to pre-turn state, so any embeddings
+                        # built mid-turn now describe code that is gone or
+                        # reverted. mark_stale() (not invalidate_index()) is
+                        # enough: the next semantic query runs the incremental
+                        # hash-diff rebuild and re-embeds only files that
+                        # actually changed. Wiping the whole index would
+                        # re-embed the entire workspace after every Ctrl+C,
+                        # including turns that never searched. /restore still
+                        # uses invalidate_index() because a zip-unpack is a
+                        # full snapshot replace.
+                        if getattr(emperor, "code_search_agent", None):
+                            emperor.code_search_agent.mark_stale()
 
                         shutil.copytree(backup_dir, config.SCRATCH_DIR, dirs_exist_ok=True)
                         emperor.workspace_tracker._ensure_index_loaded()
@@ -592,6 +611,16 @@ def cmd_reset():
     """/reset — clear the current session, scratch files, and backups."""
     emperor.chat_history.clear()
     emperor.workspace_tracker.reset_workspace()
+
+    # Code index persists across /reset (uploads survive the reset below, and
+    # their embeddings are still valid) — just mark it stale so the next
+    # semantic search walks disk again. scratch/ entries drop out naturally
+    # (their files are gone); uploads/ hashes still match, so those chunks
+    # are kept with zero extra API calls. Do NOT invalidate_index() here —
+    # that deletes code_index.json and re-embeds uploads from scratch, which
+    # is the opposite of "persists across /reset".
+    if getattr(emperor, "code_search_agent", None):
+        emperor.code_search_agent.mark_stale()
 
     # Wipe scratch folder — all model-generated files (code, OCR .txt, etc.)
     # Uploads are intentionally preserved — user placed them there manually.

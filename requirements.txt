@@ -12,3 +12,10 @@ rank-bm25
 opencv-python
 pylatexenc
 prompt-toolkit>=3.0.0
+
+# Semantic code search: AST-aware chunking for workspace_search(semantic=true).
+# tree-sitter-language-pack is the maintained successor to tree-sitter-languages,
+# supporting Python 3.13+ and tree-sitter >= 0.22's C API.
+# Import is wrapped in a try/except in code_search_agent.py — if no wheel is
+# available for the running Python version, chunking falls back to regex.
+tree-sitter-language-pack

@@ -688,6 +688,10 @@ class TurnStateManager:
             except Exception:
                 pass
 
+        # Invalidate code search index — scratch files reverted, index is stale
+        if hasattr(agent, 'code_search_agent') and agent.code_search_agent:
+            agent.code_search_agent.invalidate_index()
+
         # ── 3 & 4. Truncate agent memory + trim ledger ─────────────────────────
         # Factored into its own method so /rerun can call ONLY this part —
         # see truncate_history_only() below.
