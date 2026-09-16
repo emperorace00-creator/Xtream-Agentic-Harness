@@ -7,7 +7,7 @@
 #   Google: config.OCR_GOOGLE_MODELS  (e.g. ["gemma-4-31b-it", "gemma-4-26b-a4b-it"])
 #
 #   A model that gets rate-limited/overloaded just moves to the next model
-#   in its own provider's list (see _try_provider_models) — add or remove
+#   in its own provider's list (see _try_provider_models) - add or remove
 #   models by editing the config list, no code change needed. A provider's
 #   circuit breaker only trips once its ENTIRE model list has failed.
 #
@@ -16,26 +16,26 @@
 #   (circuit closed) and has more spare AIMD capacity, preferring NIM on a
 #   tie (NIM is the tested/known-good default). This lets both providers'
 #   capacity get used concurrently instead of Google sitting idle as a
-#   fallback-only path — previously ~4 concurrent OCR calls total even
+#   fallback-only path - previously ~4 concurrent OCR calls total even
 #   though both gates allow up to their own ceiling in parallel.
 #
 # Adaptive concurrency (_ConcurrencyGate / AIMD):
-#   - Starts at INITIAL_CONCURRENCY parallel API calls (moderate, not maxed —
+#   - Starts at INITIAL_CONCURRENCY parallel API calls (moderate, not maxed -
 #     an aggressive starting concurrency risks a synchronized 429 burst
 #     before the first rate-limit signal even comes back).
 #   - 429 received    -> slots = max(MIN_CONCURRENCY, slots // 2)  (true
-#     multiplicative decrease — a single 429 usually means capacity was
+#     multiplicative decrease - a single 429 usually means capacity was
 #     already meaningfully exceeded, so back off hard, not by 1).
 #   - After INCREASE_AFTER consecutive successes -> slots += 1.
 #   - NIM's ceiling (MAX_CONCURRENCY) is the tested, known-safe value (4).
 #     Google's ceiling (GOOGLE_MAX_CONCURRENCY) is set higher since its real
-#     limit is unknown — AIMD is left room to discover it empirically rather
+#     limit is unknown - AIMD is left room to discover it empirically rather
 #     than being capped at a number tuned for a different provider.
 #   The gates are shared across process_images() calls so rate-limit memory
 #   persists between PDF page batches.
 #
 # Circuit breakers (_CircuitBreaker), one per provider:
-#   Distinct from the AIMD gate — the gate throttles per-call concurrency,
+#   Distinct from the AIMD gate - the gate throttles per-call concurrency,
 #   the breaker decides whether to attempt a provider AT ALL right now.
 #   After CONSEC_FAILURES_TO_OPEN consecutive full-chain failures, the
 #   breaker opens: new pages skip that provider entirely (no wasted
@@ -73,7 +73,7 @@ from utils import read_api_key, MIME_MAP, backoff_wait, mime_type_from_url, cons
 # ── Concurrency / retry constants ─────────────────────────────────────────────
 # Bug 20 / BUG-A1: deterministic client-side errors (bad request / payload too
 # large) indicate a problem with the specific image/request, not a provider
-# outage — subsequent pages should still be attempted against the same
+# outage - subsequent pages should still be attempted against the same
 # provider, so these codes must NOT trip the circuit breaker. Shared by both
 # _try_provider_models (single-image) and _try_provider_models_group
 # (multi-image) so the two sibling methods can't drift out of parity again.
@@ -82,9 +82,9 @@ _CLIENT_SIDE_CODES = {400, 413, 422}
 RETRIES_PER_TIER    = 2   # NIM retry attempts before falling to next tier
 MAX_ROUNDS          = 3   # full Tier1→2→3 restarts before permanent failure
 ROUND_COOLDOWN_BASE = 30  # seconds; sleep = base * (round_number - 1) between rounds
-INITIAL_CONCURRENCY = 4   # starting parallel API call slots (moderate — see header)
+INITIAL_CONCURRENCY = 4   # starting parallel API call slots (moderate - see header)
 MAX_CONCURRENCY        = 4    # ceiling for NIM's AIMD increase (tested/known-safe)
-GOOGLE_MAX_CONCURRENCY = 16   # ceiling for Google's AIMD increase — deliberately
+GOOGLE_MAX_CONCURRENCY = 16   # ceiling for Google's AIMD increase - deliberately
                               # higher than NIM's since Google's real RPM limit is
                               # unknown; AIMD needs room above 4 to discover it.
 MIN_CONCURRENCY     = 1   # floor for AIMD decrease
@@ -169,13 +169,13 @@ class _ConcurrencyGate:
     parallel image threads. Thread-safe via threading.Condition.
 
     DECREASE: On 429 rate-limit → desired = max(minimum, desired // 2).
-              True multiplicative decrease — halves rather than -=1, since a
+              True multiplicative decrease - halves rather than -=1, since a
               429 usually means the limit was already meaningfully exceeded.
               Waiting threads see the lower limit immediately; inflight calls
               already running complete normally and then free their slot.
 
     INCREASE: After INCREASE_AFTER consecutive successes → desired += 1
-              (ceiling: this instance's `maximum`, set per-provider — see
+              (ceiling: this instance's `maximum`, set per-provider - see
               MAX_CONCURRENCY vs GOOGLE_MAX_CONCURRENCY). Waiting threads are
               notified so the new slot is filled immediately.
 
@@ -234,7 +234,7 @@ class _ConcurrencyGate:
 
     def report_rate_limit(self):
         """Call when a 429 / RESOURCE_EXHAUSTED is received. Halves desired
-        (floored at minimum) — true multiplicative decrease. A single 429
+        (floored at minimum) - true multiplicative decrease. A single 429
         usually means capacity was already meaningfully exceeded by the time
         it arrives (other in-flight calls were sent before this signal came
         back), so back off hard rather than grinding down by 1 through a
@@ -255,7 +255,7 @@ class _ConcurrencyGate:
     def free_slots(self) -> int:
         """Non-blocking peek: how many slots are free right now.
         Used only for the dispatcher's soft tie-break preference between
-        providers — not a reservation, so a race against acquire() is fine
+        providers - not a reservation, so a race against acquire() is fine
         here (worst case the dispatcher's guess is stale by one slot)."""
         with self._cond:
             return max(0, self._desired - self._inflight)
@@ -267,26 +267,26 @@ class _ConcurrencyGate:
 
 class _CircuitBreaker:
     """
-    Per-provider circuit breaker for FULL-CHAIN failures — distinct from the
+    Per-provider circuit breaker for FULL-CHAIN failures - distinct from the
     AIMD gate above, which throttles per-call concurrency. This decides
     whether to attempt a provider AT ALL right now.
 
     Without this: if a provider is fully down, every single page still pays
     its full retry+timeout cost before falling through to the other
-    provider — even though page #1 already proved this provider is dead.
+    provider - even though page #1 already proved this provider is dead.
     The breaker lets later pages skip it entirely until it's likely back.
 
     States:
-      CLOSED    — normal; provider is tried as usual.
-      OPEN      — provider tripped after CONSEC_FAILURES_TO_OPEN consecutive
+      CLOSED    - normal; provider is tried as usual.
+      OPEN      - provider tripped after CONSEC_FAILURES_TO_OPEN consecutive
                   full-chain failures; skipped entirely until cooldown elapses.
-      HALF_OPEN — cooldown elapsed; exactly one probe page is allowed through
+      HALF_OPEN - cooldown elapsed; exactly one probe page is allowed through
                   to test recovery. Success → CLOSED. Failure → OPEN again,
                   with cooldown doubled (capped at BREAKER_MAX_COOLDOWN) so a
                   still-dead provider isn't hammered with probes.
 
     Thread-safe via a plain Lock (no waiting/blocking semantics needed here,
-    unlike the gate — allow() is a quick non-blocking check).
+    unlike the gate - allow() is a quick non-blocking check).
     """
 
     def __init__(self, name: str,
@@ -343,7 +343,7 @@ class _CircuitBreaker:
     def record_failure(self):
         with self._lock:
             if self._state == "half_open":
-                # Probe failed — reopen with a longer cooldown before retrying.
+                # Probe failed - reopen with a longer cooldown before retrying.
                 self._cooldown          = min(self._max_cooldown, self._cooldown * 2)
                 self._state              = "open"
                 self._opened_at          = time.monotonic()
@@ -376,7 +376,7 @@ class ImageOCRAgent:
       - 429 received → slots = max(1, slots // 2)  (multiplicative decrease).
       - INCREASE_AFTER (3) consecutive successes → slots += 1.
       - NIM ceiling: MAX_CONCURRENCY (4, tested). Google ceiling:
-        GOOGLE_MAX_CONCURRENCY (16) — deliberately higher since Google's real
+        GOOGLE_MAX_CONCURRENCY (16) - deliberately higher since Google's real
         limit is unknown; AIMD needs room to discover it.
       The gates are shared across process_images() calls so rate-limit
       history from one batch carries into the next batch.
@@ -403,13 +403,13 @@ class ImageOCRAgent:
             if not self._google_client:
                 console.print("⚠️  [yellow]ImageOCRAgent: Google key not found — Google tiers disabled[/yellow]")
 
-            # Two independent AIMD gates — NIM and Google have separate RPM quotas.
+            # Two independent AIMD gates - NIM and Google have separate RPM quotas.
             # A NIM 429 must NOT throttle Google slots, and vice versa. Google's
-            # ceiling is set higher than NIM's (unknown real limit — see header).
+            # ceiling is set higher than NIM's (unknown real limit - see header).
             self._nim_gate    = _ConcurrencyGate(maximum=MAX_CONCURRENCY)
             self._google_gate = _ConcurrencyGate(maximum=GOOGLE_MAX_CONCURRENCY)
 
-            # Two independent circuit breakers — see _CircuitBreaker docstring.
+            # Two independent circuit breakers - see _CircuitBreaker docstring.
             self._nim_breaker    = _CircuitBreaker("NIM")
             self._google_breaker = _CircuitBreaker("Google")
 
@@ -481,7 +481,7 @@ class ImageOCRAgent:
                 "error":    _is_error,
             }
 
-        # Spawn one thread per image — the _ConcurrencyGate throttles how many
+        # Spawn one thread per image - the _ConcurrencyGate throttles how many
         # actually make API calls at once, so we don't need to limit max_workers here.
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(resolved)) as pool:
             futures = [pool.submit(_ocr_one, i, src, url)
@@ -520,7 +520,7 @@ class ImageOCRAgent:
             if result is not None:
                 return result
             # Bug 9 fix: if all failed and the cause was client-side, don't sleep
-            # and retry — it will fail again. Break immediately.
+            # and retry - it will fail again. Break immediately.
             if getattr(self, "_last_failure_was_client_error", False):
                 break
 
@@ -538,7 +538,7 @@ class ImageOCRAgent:
         it has no API key, or it has no models configured.
         Prefers NIM on a tie in free AIMD capacity (tested/known-good
         default), otherwise sends to whichever has more spare slots right
-        now — this is what lets both providers' capacity get used
+        now - this is what lets both providers' capacity get used
         concurrently instead of Google sitting idle as fallback-only.
         """
         nim_ok    = bool(self._nvidia_key) and bool(config.OCR_NIM_MODELS) and self._nim_breaker.allow()
@@ -560,7 +560,7 @@ class ImageOCRAgent:
         """
         Try every model in this provider's configured model list, in order.
         A model that exhausts its retries just moves on to the next model in
-        the list (e.g. a newer/less-loaded model) — the provider's circuit
+        the list (e.g. a newer/less-loaded model) - the provider's circuit
         breaker only records a failure once EVERY model in its list has
         failed this round, not on each individual model's exhaustion.
         Returns (text, model) on success, None if the whole list failed.
@@ -605,7 +605,7 @@ class ImageOCRAgent:
                 )
 
         # Bug 20: don't trip the circuit breaker for deterministic client-side
-        # errors (bad request / payload too large) — those indicate a problem
+        # errors (bad request / payload too large) - those indicate a problem
         # with this specific image, not a provider outage, so subsequent pages
         # should still be attempted against the same provider.
         _is_client_error = any(
@@ -649,7 +649,7 @@ class ImageOCRAgent:
     def _call_nim_ocr(self, model: str, image_url: str) -> str:
         """
         POST OCR request to NVIDIA NIM with no-think mode.
-        Wraps the HTTP call with the AIMD gate — 429 reduces concurrency slots
+        Wraps the HTTP call with the AIMD gate - 429 reduces concurrency slots
         immediately; success increments the streak counter.
         Attaches _status_code to exceptions so callers can detect 429s.
         """
@@ -713,7 +713,7 @@ class ImageOCRAgent:
     def _call_google_ocr(self, model: str, image_url: str) -> str:
         """
         OCR via Google Gemini API with thinking_level=NONE (zero scratchpad).
-        NONE: thinking budget = 0 — no scratchpad at all.
+        NONE: thinking budget = 0 - no scratchpad at all.
         MINIMAL would still generate a small scratchpad; NONE is correct for OCR.
         Wraps the call with the AIMD gate.
         Handles data-URI and http(s) images.
@@ -864,7 +864,7 @@ class ImageOCRAgent:
                 except Exception as e:
                     raise RuntimeError(f"Could not decode data URI: {e}")
             elif image_url.startswith("http"):
-                # Bug 4: same fix as _call_google_ocr — download to bytes.
+                # Bug 4: same fix as _call_google_ocr - download to bytes.
                 try:
                     import urllib.request as _urllib_req
                     # Bug #16 + #15 fix: browser User-Agent to bypass CDN 403s;
@@ -963,7 +963,7 @@ class ImageOCRAgent:
                 )
 
         # BUG-A1 fix: mirror the same client-side-error guard used in
-        # _try_provider_models (single-image) — a 400/413/422 from an
+        # _try_provider_models (single-image) - a 400/413/422 from an
         # oversized multi-image request is a request-specific error, not a
         # provider outage, so it must not trip the circuit breaker and skip
         # the provider for subsequent pages.
@@ -1016,7 +1016,7 @@ class ImageOCRAgent:
             if result is not None:
                 return result
             # Bug 9 fix: if all failed and the cause was client-side, don't sleep
-            # and retry — it will fail again. Break immediately.
+            # and retry - it will fail again. Break immediately.
             if getattr(self, "_last_failure_was_client_error", False):
                 break
 
@@ -1030,7 +1030,7 @@ class ImageOCRAgent:
     def process_image_group(self, image_input: str) -> dict:
         """
         Parse image_input (same shlex format as process_images), resolve all
-        images, then send them ALL in ONE API call — overview + tile crops
+        images, then send them ALL in ONE API call - overview + tile crops
         together so the model sees full context AND zoomed detail at once.
 
         This is the tiling companion to process_images: where process_images

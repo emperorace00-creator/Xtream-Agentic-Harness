@@ -17,7 +17,7 @@ from datetime import date
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FORMAT SPEC  — always injected, teaches the model the tag system
+# FORMAT SPEC  - always injected, teaches the model the tag system
 # ══════════════════════════════════════════════════════════════════════════════
 
 PSEUDO_TOOL_FORMAT = """
@@ -40,7 +40,7 @@ RULES:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# WEB  — quick_search + url_search
+# WEB  - quick_search + url_search
 # ══════════════════════════════════════════════════════════════════════════════
 
 WEB_TOOLS_PROMPT = """
@@ -97,11 +97,11 @@ def web_date_context() -> str:
     """
     Returns a REFERENCE DATE block for the system prompt, injected only when
     the 'web' group is active (see emperor_agent._base_system). Computed
-    fresh on every call — NOT a module-level constant — so a long-running
+    fresh on every call - NOT a module-level constant - so a long-running
     session still has the correct date even if it spans midnight or runs for
     days. Without this, the model has no reliable anchor for "recent,"
     "current," or "last N months," and can't correctly compute a from_date
-    value for quick_search — it would be guessing at today's date from
+    value for quick_search - it would be guessing at today's date from
     training data, which is exactly the kind of staleness this whole
     from_date feature exists to avoid.
     """
@@ -116,7 +116,7 @@ def web_date_context() -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# HISTORY  — search_history (always bundled with files group)
+# HISTORY  - search_history (always bundled with files group)
 # ══════════════════════════════════════════════════════════════════════════════
 
 HISTORY_TOOLS_PROMPT = """
@@ -154,7 +154,7 @@ CORE_PROMPT = WEB_TOOLS_PROMPT + HISTORY_TOOLS_PROMPT
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FILE OPS  — view_lines, search_in_file, workspace_search, str_replace
+# FILE OPS  - view_lines, search_in_file, workspace_search, str_replace
 # ══════════════════════════════════════════════════════════════════════════════
 
 FILE_TOOLS_PROMPT = """
@@ -275,7 +275,7 @@ relevant functions and classes even when your exact words don't appear in the co
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PDF  — ingest_pdf + doc_search + view_lines
+# PDF  - ingest_pdf + doc_search + view_lines
 # ══════════════════════════════════════════════════════════════════════════════
 
 PDF_TOOLS_PROMPT = """
@@ -338,7 +338,7 @@ or to read the document sequentially (e.g. "first 5 pages").
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# BASH  — bash sandbox tool
+# BASH  - bash sandbox tool
 # ══════════════════════════════════════════════════════════════════════════════
 
 BASH_TOOLS_PROMPT = """
@@ -389,7 +389,7 @@ fix the mistake and retry.
 
 # Backward-compat alias (old imports expect FILE_OPS_PROMPT)
 # ══════════════════════════════════════════════════════════════════════════════
-# RESEARCH  — search_semantic_scholar
+# RESEARCH  - search_semantic_scholar
 # ══════════════════════════════════════════════════════════════════════════════
 
 RESEARCH_TOOLS_PROMPT = """
@@ -430,7 +430,7 @@ GROUP_PROMPTS: dict = {
     "research": RESEARCH_TOOLS_PROMPT,
 }
 
-# Tools belonging to each group — drives _get_active_known_tools()
+# Tools belonging to each group - drives _get_active_known_tools()
 GROUP_TOOLS: dict = {
     "web":      {"quick_search", "url_search"},
     "files":    {"view_lines", "search_in_file", "workspace_search", "search_history", "str_replace", "ingest_chat"},
@@ -440,9 +440,9 @@ GROUP_TOOLS: dict = {
 }
 
 # item 22 / SP-20: union of every tool declared across GROUP_TOOLS. This must
-# always equal _build_dispatch().keys() in tool_handlers.py — if a tool is
+# always equal _build_dispatch().keys() in tool_handlers.py - if a tool is
 # added to one but not the other, it either can't be dispatched (parser has
 # no handler) or can't ever be invoked (no XML tag advertised for it). There
 # was previously no automated check for this drift; EmperorAgent.__init__()
-# now asserts the two sets match at startup — see emperor_agent.py.
+# now asserts the two sets match at startup - see emperor_agent.py.
 GROUP_TOOLS_UNION: frozenset = frozenset().union(*GROUP_TOOLS.values())

@@ -5,9 +5,9 @@
 #   class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin): ...
 #
 # The mixin accesses instance attributes set by EmperorAgent.__init__:
-#   self.nim_api_key, self.nim_base_url  — for NIM
-#   self.google_client                   — for Google Gemini
-#   self.cf_api_key, self.cf_base_url    — for Cloudflare
+#   self.nim_api_key, self.nim_base_url  - for NIM
+#   self.google_client                   - for Google Gemini
+#   self.cf_api_key, self.cf_base_url    - for Cloudflare
 
 import base64
 import json
@@ -35,7 +35,7 @@ class LLMBackendsMixin:
         """Sanitize messages and dispatch to the active backend."""
         # Strip fields that are only valid in API *responses*, not requests.
         # 'reasoning': stored on assistant messages for NIM/Kimi native thinking;
-        #              must be removed before sending — backends reject it.
+        #              must be removed before sending - backends reject it.
         # '_google_thought_sig': encrypted thought_signature from Google, kept
         #              only for the Google backend (where _convert_messages_to_gemini
         #              reads it to emit proper thought Parts).  Stripped everywhere
@@ -72,7 +72,7 @@ class LLMBackendsMixin:
 
         Google thought_signature handling:
           If an assistant message carries a '_google_thought_sig' field (set
-          in-memory by emperor_agent during a tool loop — never persisted to
+          in-memory by emperor_agent during a tool loop - never persisted to
           chat_history), we emit a thought Part with the signature BEFORE the
           regular text Part.  This lets Google restore its internal reasoning
           state when it reads the subsequent tool-result message, exactly the
@@ -152,7 +152,7 @@ class LLMBackendsMixin:
                         )
                         parts = [thought_part] + parts
                     except Exception:
-                        pass  # SDK version doesn't support thought_signature — skip
+                        pass  # SDK version doesn't support thought_signature - skip
 
             if parts:
                 contents.append(types.Content(role=gemini_role, parts=parts))
@@ -229,7 +229,7 @@ class LLMBackendsMixin:
                 }
 
             except AttributeError as e:
-                # Bug 25: client not initialised (missing API key) — no point retrying.
+                # Bug 25: client not initialised (missing API key) - no point retrying.
                 return {"error": f"Google backend not initialised (missing API key?): {e}"}
             except Exception as e:
                 err = str(e)
@@ -252,7 +252,7 @@ class LLMBackendsMixin:
     # ══════════════════════════════════════════════════════════════════════════
 
     def _make_request_cloudflare(self, messages, temp) -> dict:
-        # Bug 7: defense in depth — switch_backend() already refuses to activate
+        # Bug 7: defense in depth - switch_backend() already refuses to activate
         # Cloudflare without an account ID, but guard the request path too in
         # case ACTIVE_BACKEND is ever set another way. Return the same
         # {"error": ...} dict shape every other backend in this file uses on
@@ -322,7 +322,7 @@ class LLMBackendsMixin:
                 }
 
             except AttributeError as e:
-                # Bug 25: client not initialised (missing API key) — no point retrying.
+                # Bug 25: client not initialised (missing API key) - no point retrying.
                 return {"error": f"Cloudflare backend not initialised (missing API key?): {e}"}
             except Exception as e:
                 if attempt == max_retries - 1:
@@ -419,7 +419,7 @@ class LLMBackendsMixin:
     def _make_request_local(self, messages, temp) -> dict:
         """
         POST to a local llama-server instance (OpenAI-compatible /chat/completions).
-        No retries/backoff — a local server either responds or it's not running;
+        No retries/backoff - a local server either responds or it's not running;
         retrying a dead localhost connection just wastes the user's time.
 
         Timeout is intentionally very generous (not the 120-300s used by the
@@ -442,7 +442,7 @@ class LLMBackendsMixin:
                     "max_tokens":  config.EMPEROR_MAX_TOKENS,
                     "stream":      False,
                 },
-                timeout=3600,  # generous — see docstring; local gen can be slow
+                timeout=3600,  # generous - see docstring; local gen can be slow
             )
         except requests.exceptions.ConnectionError:
             return {"error": (
@@ -477,16 +477,16 @@ class LLMBackendsMixin:
         """
         Fire-and-forget: push the (fixed, known-in-advance) system prompt into
         llama-server's KV cache before the user's first real message arrives.
-        Only useful for turn 1 of a session — after that, llama-server keeps
+        Only useful for turn 1 of a session - after that, llama-server keeps
         the growing conversation warm in its slot automatically between turns,
         so this should NOT be called on every turn, only once at session/backend-
         switch start (or /tool toggle, which changes the system prompt's shape).
-        Any failure here is silent — it's an optimization, not a requirement,
+        Any failure here is silent - it's an optimization, not a requirement,
         and must never block or error out the actual chat flow.
 
         Timeout is generous (not the short 120s originally used): the full
         tool-mode system prompt is ~1700+ tokens, which at this hardware's
-        measured ~6 t/s prefill speed can take several minutes — a short
+        measured ~6 t/s prefill speed can take several minutes - a short
         timeout would abort the warm-up before it ever finished, wasting the
         prefill work already done rather than banking it.
         """
@@ -506,10 +506,10 @@ class LLMBackendsMixin:
                     "max_tokens": 1,
                     "stream":     False,
                 },
-                timeout=900,  # generous — see docstring
+                timeout=900,  # generous - see docstring
             )
         except Exception:
-            pass  # best-effort warm-up only — never surface this to the user
+            pass  # best-effort warm-up only - never surface this to the user
 
     # ══════════════════════════════════════════════════════════════════════════
     # NVIDIA NIM  (OpenAI-compatible)
@@ -531,8 +531,8 @@ class LLMBackendsMixin:
                                    <view_lines file='x' .../>\n
                                    <bash command='ls'/>"]
             [user]       content: "[SYSTEM: Power execution started ...]\n\n
-                                   [SYSTEM — view_lines result:]\n...result...\n\n
-                                   [SYSTEM — bash[ls] result:]\n...result...\n\n
+                                   [SYSTEM - view_lines result:]\n...result...\n\n
+                                   [SYSTEM - bash[ls] result:]\n...result...\n\n
                                    [SYSTEM: All power results above. Continue.]"
 
         Converted to:
@@ -620,12 +620,12 @@ class LLMBackendsMixin:
                 i += 1
                 continue
 
-            # ── Parse [SYSTEM — X result:] blocks from the user message ───────
+            # ── Parse [SYSTEM - X result:] blocks from the user message ───────
             content = msg["content"]
             result_blocks = _RESULT_BLOCK_RE.findall(content)
 
             if not result_blocks:
-                # No parseable result blocks — pass through unchanged.
+                # No parseable result blocks - pass through unchanged.
                 result.append(msg)
                 i += 1
                 continue
@@ -655,7 +655,7 @@ class LLMBackendsMixin:
 
                 tool_calls = []
                 for k, (label, _result_content) in enumerate(result_blocks):
-                    # label is e.g. "view_lines" or "bash[ls]" — extract tool name
+                    # label is e.g. "view_lines" or "bash[ls]" - extract tool name
                     fn_name = label.split("[")[0].strip()
 
                     # Try to find the matching XML tag (positional match by index)
@@ -664,7 +664,7 @@ class LLMBackendsMixin:
                         tag_name, attr_str, inner = found_tags[k]
                         arguments = _parse_args(attr_str, inner)
                     else:
-                        # No tag found at this position — synthesize minimal args
+                        # No tag found at this position - synthesize minimal args
                         # by parsing the label e.g. "bash[ls -la]" → {command: "ls -la"}
                         bracket = label.find("[")
                         if bracket != -1:
@@ -682,7 +682,7 @@ class LLMBackendsMixin:
 
                 # Replace the assistant message with a copy that includes tool_calls[].
                 # We keep the original content intact (pseudo-XML + reasoning blocks
-                # are accepted by NIM alongside tool_calls[] — confirmed by probe).
+                # are accepted by NIM alongside tool_calls[] - confirmed by probe).
                 patched_asst = dict(result[asst_idx])
                 patched_asst["tool_calls"] = tool_calls
                 result[asst_idx] = patched_asst
@@ -707,7 +707,7 @@ class LLMBackendsMixin:
         Pass an explicit model string to override for a specific call.
         """
         # Convert pseudo-tool user messages → native tool role messages.
-        # This is a send-time transformation only — chat_history and all other
+        # This is a send-time transformation only - chat_history and all other
         # backends remain on the two-role (user/assistant) format unchanged.
         messages = self._convert_to_native_tools(messages)
 
@@ -735,7 +735,7 @@ class LLMBackendsMixin:
                     request_body["stream_options"] = {"include_usage": True}
 
                 # Model-specific request-body quirks (thinking-mode toggles etc.)
-                # — see config.NIM_MODEL_QUIRKS for what each model needs and why.
+                # - see config.NIM_MODEL_QUIRKS for what each model needs and why.
                 # Adding a new model's quirk is a config-only change; this loop
                 # never needs to grow another elif.
                 model_lower = _model.lower()
@@ -788,7 +788,7 @@ class LLMBackendsMixin:
                 }
 
             except AttributeError as e:
-                # Bug 25: nim_api_key or nim_base_url not set (missing key) — fail fast.
+                # Bug 25: nim_api_key or nim_base_url not set (missing key) - fail fast.
                 return {"error": f"NIM backend not initialised (missing API key?): {e}"}
             except Exception as e:
                 if attempt == max_retries - 1:
@@ -828,7 +828,7 @@ class LLMBackendsMixin:
                 except Exception:
                     continue
 
-                # Top-level usage field — present in the last SSE chunk from NIM
+                # Top-level usage field - present in the last SSE chunk from NIM
                 _usage = chunk.get("usage") or {}
                 if _usage.get("total_tokens"):
                     total_tokens = _usage["total_tokens"]
@@ -839,7 +839,7 @@ class LLMBackendsMixin:
 
                 delta = choices[0].get("delta", {})
 
-                # Reasoning — stream live to terminal
+                # Reasoning - stream live to terminal
                 # NIM uses "reasoning"; Moonshot official uses "reasoning_content"
                 reasoning = delta.get("reasoning") or delta.get("reasoning_content") or ""
                 if reasoning:
@@ -849,7 +849,7 @@ class LLMBackendsMixin:
                     console.print(reasoning, end="", highlight=False, markup=False)
                     full_thinking.append(reasoning)
 
-                # Content — accumulate silently
+                # Content - accumulate silently
                 content = delta.get("content") or ""
                 if content:
                     full_content.append(content)

@@ -23,7 +23,7 @@ import os
 import config
 from utils import rerank_passages, console
 
-FULL_THRESHOLD = 500   # chars — show the complete turn below this
+FULL_THRESHOLD = 500   # chars - show the complete turn below this
 RERANK_POOL    = 15    # how many top-by-score candidates get reranked
 
 
@@ -32,12 +32,12 @@ class SearchHistoryAgent:
     Cross-session semantic + keyword search over past conversation turns.
 
     Pipeline (see search()):
-      1. _list_sessions()     — find .jsonl session files
-      2. _parse_turns()       — read one session into (user, assistant) pairs
-      3. _reindex_sessions()  — embed any turns not yet in the sidecar cache
-      4. _score_candidates()  — cosine/keyword-score every turn against query
-      5. _rerank()            — cross-encoder rerank the top-scoring pool
-      6. _format_results()    — build the string returned to the model
+      1. _list_sessions()     - find .jsonl session files
+      2. _parse_turns()       - read one session into (user, assistant) pairs
+      3. _reindex_sessions()  - embed any turns not yet in the sidecar cache
+      4. _score_candidates()  - cosine/keyword-score every turn against query
+      5. _rerank()            - cross-encoder rerank the top-scoring pool
+      6. _format_results()    - build the string returned to the model
     """
 
     def __init__(self, histories_dir: str = None):
@@ -234,7 +234,7 @@ class SearchHistoryAgent:
                 )
                 continue
 
-            # Bug 16: _embed_batched() never raises on a batch failure — it
+            # Bug 16: _embed_batched() never raises on a batch failure - it
             # pads the result with None placeholders instead. Every entry in
             # `vecs` corresponds to a non-empty passage (valid_passages was
             # already filtered above), so a None here means embedding
@@ -391,7 +391,7 @@ class SearchHistoryAgent:
             lines.append("")
 
             if combined_len <= FULL_THRESHOLD:
-                # Show complete turn — it's short enough
+                # Show complete turn - it's short enough
                 lines.append(f"  YOU:   {user_text}")
                 lines.append(f"  AGENT: {asst_text}")
             else:

@@ -15,7 +15,7 @@ import config
 
 # Temporary fix for catppuccin + matplotlib bug (#129)
 #
-# QA-2 fix, part 1: the patch + import used to be a bare sequence — if the
+# QA-2 fix, part 1: the patch + import used to be a bare sequence - if the
 # catppuccin import raised, find_spec stayed monkey-patched for the rest of
 # the process, silently blocking matplotlib detection everywhere else.
 # try/finally guarantees the restore runs no matter what happens inside.
@@ -59,7 +59,7 @@ def robust_rmtree(path: str):
     import stat
 
     def _on_rm_error(func, fpath, exc_info):
-        """Clear read-only flag and retry — body is identical for onerror/onexc."""
+        """Clear read-only flag and retry - body is identical for onerror/onexc."""
         try:
             os.chmod(fpath, stat.S_IWRITE)
             func(fpath)
@@ -94,7 +94,7 @@ def _force_remove(path: str) -> None:
             os.chmod(path, _stat.S_IWRITE)
             os.remove(path)
         except Exception:
-            pass  # best-effort — log was already printed by caller
+            pass  # best-effort - log was already printed by caller
     except Exception:
         pass
 
@@ -128,7 +128,7 @@ _LANG_MAP = {
 }
 
 # Shared MIME type map for image extensions.
-# Single source of truth — imported by start.py and image_ocr_agent.py
+# Single source of truth - imported by start.py and image_ocr_agent.py
 # so there is only one place to update when adding a new format.
 MIME_MAP: dict[str, str] = {
     ".jpg":  "image/jpeg",
@@ -146,7 +146,7 @@ def mime_type_from_url(url: str, default: str = "image/jpeg") -> str:
     """
     Infer an image MIME type from a URL's path extension, ignoring any query
     string or fragment (e.g. 'photo.png?w=800' -> '.png', not '.png?w=800').
-    Falls back to `default` when the extension is missing or unrecognised —
+    Falls back to `default` when the extension is missing or unrecognised -
     e.g. dynamic image URLs with no file extension at all.
     """
     try:
@@ -160,7 +160,7 @@ def detect_language(filepath: str) -> str:
     ext = os.path.splitext(filepath)[1].lower()
     return _LANG_MAP.get(ext, 'text')
 
-# Single source of truth for "this is a source/text file we understand" —
+# Single source of truth for "this is a source/text file we understand" -
 # derived directly from _LANG_MAP so the two can never drift apart.
 # tool_handlers.UPLOAD_EXTENSIONS and workspace_tracker._RECONCILE_EXTENSIONS
 # both build on top of this base set instead of hand-maintaining their own
@@ -172,7 +172,7 @@ def extract_thinking_tags(text: str) -> tuple:
     Extract content from <think> or <reasoning> tags (case-insensitive).
 
     Some backends leak extended thinking as inline tags in content instead
-    of using a structured reasoning field — MiniMax does this with <think>,
+    of using a structured reasoning field - MiniMax does this with <think>,
     and Gemini inconsistently does the same with <reasoning> (on top of its
     normal structured `thought` part). Both are treated identically here.
 
@@ -185,7 +185,7 @@ def extract_thinking_tags(text: str) -> tuple:
     tag_pattern = re.compile(r"<(think|reasoning)>(.*?)</\1>", re.DOTALL | re.IGNORECASE)
     # Bug #27 fix: use findall (all matches) instead of search (first only).
     # If a model emits two <think>...</think> blocks, search() captured only the
-    # first while sub() stripped BOTH — the second block was deleted silently.
+    # first while sub() stripped BOTH - the second block was deleted silently.
     # findall returns a list of (tag_name, content) tuples.
     matches = tag_pattern.findall(text)
 
@@ -282,16 +282,16 @@ def auto_enhance(image_path: str) -> list[str]:
     Auto-detect and fix common image quality issues before the model sees the image.
 
     Two problems handled:
-      1. Dark background  — avg pixel brightness < 80 → invert + mild contrast boost
-      2. Low contrast     — pixel range < 100 AND image is not a natural photo → contrast boost
+      1. Dark background  - avg pixel brightness < 80 → invert + mild contrast boost
+      2. Low contrast     - pixel range < 100 AND image is not a natural photo → contrast boost
 
     Modifies the file in-place. Returns list of operation strings applied, or [] if untouched.
-    Non-fatal — original image is unchanged if an exception occurs before save().
+    Non-fatal - original image is unchanged if an exception occurs before save().
     """
     if not image_path or not os.path.isfile(image_path):
         return []
 
-    # Skip URLs and data URIs — nothing to do on them here
+    # Skip URLs and data URIs - nothing to do on them here
     if image_path.startswith("http") or image_path.startswith("data:"):
         return []
 
@@ -299,7 +299,7 @@ def auto_enhance(image_path: str) -> list[str]:
         import numpy as np
         from PIL import Image, ImageOps, ImageEnhance
     except ImportError:
-        # PIL/numpy not installed — silently skip, OCR still works without preprocessing
+        # PIL/numpy not installed - silently skip, OCR still works without preprocessing
         return []
 
     try:
@@ -321,7 +321,7 @@ def auto_enhance(image_path: str) -> list[str]:
             sat_map = np.where(max_c > 0, (max_c - min_c) / max_c, 0.0)
             avg_saturation = sat_map.mean()  # 0.0 – 1.0
 
-            # Threshold: saturation < 0.12 ≈ 30/255 in OpenCV HSV — safe for b&w docs
+            # Threshold: saturation < 0.12 ≈ 30/255 in OpenCV HSV - safe for b&w docs
             if avg_saturation < 0.12:
                 img = ImageOps.invert(img.convert("RGB"))
                 img = ImageEnhance.Contrast(img).enhance(1.3)
@@ -354,7 +354,7 @@ def auto_enhance(image_path: str) -> list[str]:
         return applied
 
     except Exception as e:
-        # Non-fatal — original image is untouched if we crash before save()
+        # Non-fatal - original image is untouched if we crash before save()
         console.print(f"   [dim yellow]auto_enhance skipped ({e})[/dim yellow]")
         return []
 
@@ -366,7 +366,7 @@ def auto_enhance(image_path: str) -> list[str]:
 class GlobalHistoryWriter:
     """
     Appends each user+assistant turn to a permanent per-project .jsonl file
-    inside config.GLOBAL_HISTORIES_DIR. Non-fatal — never raises.
+    inside config.GLOBAL_HISTORIES_DIR. Non-fatal - never raises.
     """
 
     def __init__(self):
@@ -381,7 +381,7 @@ class GlobalHistoryWriter:
     def write_turn(self, user_query: str, assistant_response: str) -> bool:
         """
         Append one user+assistant turn to this project's global .jsonl file.
-        Non-fatal — logs warning on failure, never raises.
+        Non-fatal - logs warning on failure, never raises.
 
         Both lines are written as a single f.write() call so a process kill
         between the two writes can never leave an orphaned user-only line that
@@ -402,7 +402,7 @@ class GlobalHistoryWriter:
 # ATOMIC JSON PERSISTENCE
 #
 # Single implementation of "read JSON, tolerate any error" and "write JSON
-# safely via tmp-file + os.replace" — previously hand-rolled independently
+# safely via tmp-file + os.replace" - previously hand-rolled independently
 # in web_agent (cache), workspace_tracker (registry), and turn_state_manager
 # (ledger), with only the registry/ledger versions actually being atomic.
 # ══════════════════════════════════════════════════════════════════════════════
@@ -452,7 +452,7 @@ def rerank_passages(query: str, passages: list, api_key: str = None, label: str 
     most relevant first, using the NVIDIA cross-encoder reranker.
 
     Falls back to the original order (list(range(len(passages)))) if no API
-    key is available, there's nothing to rerank, or the API call fails —
+    key is available, there's nothing to rerank, or the API call fails -
     never raises.
 
     Args:
@@ -526,7 +526,7 @@ def compute_view_window(total_lines: int, start: int, end: int, context: int) ->
         context:     extra lines of context to include before/after
 
     Returns:
-        (start_idx, end_idx) — 0-based, end_idx exclusive, both clipped to
+        (start_idx, end_idx) - 0-based, end_idx exclusive, both clipped to
         [0, total_lines].
     """
     start_idx = max(0, max(1, start) - 1 - context)
@@ -554,14 +554,14 @@ def backoff_wait(attempt: int, base_delay: int = 3, reason: str = "Rate limit", 
 # ══════════════════════════════════════════════════════════════════════════════
 # CACHED API KEY READER
 #
-# Single per-process cache for key files — avoids each module independently
+# Single per-process cache for key files - avoids each module independently
 # re-reading the same file and maintaining its own cache dict/global.
 # ══════════════════════════════════════════════════════════════════════════════
 
 @functools.lru_cache(maxsize=None)
 def read_api_key_cached(filepath: str) -> str:
     """Read an API key from a file, caching the result for the process lifetime.
-    Silences the missing-file warning — callers check the empty-string result.
+    Silences the missing-file warning - callers check the empty-string result.
     """
     return read_api_key(filepath, silence_warning=True)
 
@@ -573,7 +573,7 @@ def read_api_key_cached(filepath: str) -> str:
 # and all "ephemeral / ignore" directory sets across the project.
 # ══════════════════════════════════════════════════════════════════════════════
 
-# Bash hard blocklist — patterns that would cause catastrophic damage inside
+# Bash hard blocklist - patterns that would cause catastrophic damage inside
 # the Docker sandbox. Defined here (not config.py) because these are security
 # primitives, not operator-tunable settings.
 BASH_BLOCKLIST = [
@@ -588,7 +588,7 @@ BASH_BLOCKLIST = [
     r"\bdd\s+if=/dev/zero\s+of=/dev/"  # wipe block device
 ]
 
-# Zip / walk exclusion sets — shared between turn_state_manager (backup zips)
+# Zip / walk exclusion sets - shared between turn_state_manager (backup zips)
 # and workspace_tracker (reconcile walks) so both lists can't drift apart.
 EXCL_PREFIXES = (
     "enhanced_",   # enhanced_* images  (auto-generated)
@@ -706,9 +706,9 @@ def _embed_batched(texts: list, input_type: str = "passage") -> list:
 # Separate from _embed()/_embed_batched() above (NVIDIA Nemotron, used for
 # doc_search + search_history). Codestral Embed is served from Mistral's own
 # endpoint with a different request/response shape:
-#   - "input" (singular) in the raw REST body — the Python SDK uses "inputs"
+#   - "input" (singular) in the raw REST body - the Python SDK uses "inputs"
 #     but we use requests.post directly
-#   - no input_type — same model/projection for query and passage text
+#   - no input_type - same model/projection for query and passage text
 #   - "output_dimension" selects a Matryoshka-truncated embedding size
 #   - built-in 8192-token truncation server-side, no "truncate" flag needed
 # Used exclusively by code_search_agent.py for workspace_search(semantic=true).
@@ -785,7 +785,7 @@ _CL100K_ENCODING = None
 
 def _estimate_code_tokens(text: str) -> int:
     """
-    Rough token count for batch-sizing purposes only — cl100k_base as a
+    Rough token count for batch-sizing purposes only - cl100k_base as a
     stand-in for Codestral's own (non-public) tokenizer. Good enough to keep
     requests under the server-side limit with headroom; not used for billing
     or anything that needs to be exact.
@@ -799,7 +799,7 @@ def _estimate_code_tokens(text: str) -> int:
 def _embed_code_range(texts: list, start: int, end: int, out: list) -> None:
     """
     Embed texts[start:end] into out[start:end] in place. On failure, bisect
-    the range and retry each half — so one oversized/malformed chunk in a
+    the range and retry each half - so one oversized/malformed chunk in a
     64-item batch only costs that one chunk (a None placeholder), not the
     other ~63. A range of size 1 that still fails is the base case.
     """
@@ -822,7 +822,7 @@ def _embed_code_batched(texts: list) -> tuple:
     Embed code chunk texts in batches capped by item count
     (config.CODE_EMBED_BATCH_SIZE), by estimated aggregate token count
     (config.CODE_EMBED_TOKEN_CAP), and by estimated per-chunk token count
-    (config.CODE_EMBED_MAX_CHUNK_TOKENS) — see config.py for why each of
+    (config.CODE_EMBED_MAX_CHUNK_TOKENS) - see config.py for why each of
     these is sized the way it is. tiktoken's cl100k_base is used as an
     estimate throughout, not ground truth, since Codestral's own tokenizer
     isn't public.
@@ -831,14 +831,14 @@ def _embed_code_batched(texts: list) -> tuple:
     skipped before it's ever sent: Codestral Embed truncates an over-limit
     input server-side rather than rejecting it (see _embed_code's
     docstring), so sending it "succeeds" but silently embeds only the first
-    ~8192 tokens — a quality regression with no error to catch. Skipping it
+    ~8192 tokens - a quality regression with no error to catch. Skipping it
     up front turns that into a visible None instead.
 
     Returns (embeddings, oversized_indices):
       - embeddings:        flat list of embeddings (or None) in original order.
         On a batch failure (e.g. a 429, or a request that still slips past
         the aggregate token cap), the batch is bisected and retried rather
-        than discarded outright — only a chunk that still fails on its own
+        than discarded outright - only a chunk that still fails on its own
         yields a None placeholder, so one bad chunk doesn't take the rest of
         its batch down with it.
       - oversized_indices: set of original indices skipped by the pre-filter

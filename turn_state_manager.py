@@ -1,4 +1,4 @@
-# turn_state_manager.py — Per-turn backup archives and restore pipeline.
+# turn_state_manager.py - Per-turn backup archives and restore pipeline.
 #
 # Called by start.py after every successful turn (commit_turn) and when the
 # user types /restore N or /turns. Never exposed as a model tool.
@@ -8,7 +8,7 @@
 #   • workspace_registry.json  →  backups/turn_N_registry.json
 #   • ledger entry  →  backups/turn_ledger.json  (filenames, bash cmds, uploads, outputs)
 #
-# uploads/ and outputs/ are NOT archived — see design notes in plan.
+# uploads/ and outputs/ are NOT archived - see design notes in plan.
 
 import json
 import os
@@ -27,8 +27,8 @@ from rich.markup import escape as _esc_markup
 # and _build_dispatch() in tool_handlers.py.
 #
 # Active file-modifying tools in this project:
-#   bash       — primary way the model creates/modifies files (cat >, cp, python, etc.)
-#   str_replace — surgical edits to existing files
+#   bash       - primary way the model creates/modifies files (cat >, cp, python, etc.)
+#   str_replace - surgical edits to existing files
 #
 _OP_MODIFY = {"str_replace"}
 _OP_BASH   = {"bash"}
@@ -90,7 +90,7 @@ class TurnStateManager:
         """
         Block until turn_num's background scratch-zip thread (if any) finishes,
         bounded by timeout. commit_turn() zips scratch/ asynchronously so the
-        REPL isn't blocked after every turn — but that means restore_turn(),
+        REPL isn't blocked after every turn - but that means restore_turn(),
         list_turns(), and delete_turn() must not check os.path.exists(zip_path)
         without first waiting for a same-turn zip that may still be writing.
         Call this before any archive-existence check for a specific turn_num.
@@ -133,7 +133,7 @@ class TurnStateManager:
     def _zip_scratch(self, zip_path: str):
         """
         Zip config.SCRATCH_DIR into zip_path, skipping ephemeral files/dirs.
-        Uses ZIP_DEFLATED level-6 — good compression, fast enough for text/code.
+        Uses ZIP_DEFLATED level-6 - good compression, fast enough for text/code.
         """
         scratch = config.SCRATCH_DIR
         with zipfile.ZipFile(zip_path, "w",
@@ -195,7 +195,7 @@ class TurnStateManager:
         return total / (1024 * 1024)
 
     # ══════════════════════════════════════════════════════════════════════════
-    # ATTRIBUTION — free from _current_tool_call_log
+    # ATTRIBUTION - free from _current_tool_call_log
     # ══════════════════════════════════════════════════════════════════════════
 
     def _parse_attribution(self, tool_call_log: list) -> dict:
@@ -206,7 +206,7 @@ class TurnStateManager:
           - bash       → primary creation/modification path (opaque but we flag it)
           - str_replace → surgical edits; args["file"] is the target path
 
-        No filesystem watching needed — the log records every executed tool call.
+        No filesystem watching needed - the log records every executed tool call.
         """
         modified  = set()
         bash_cmds = []
@@ -243,7 +243,7 @@ class TurnStateManager:
         }
 
     # ══════════════════════════════════════════════════════════════════════════
-    # COMMIT — called at end of each successful turn
+    # COMMIT - called at end of each successful turn
     # ══════════════════════════════════════════════════════════════════════════
 
     def commit_turn(
@@ -266,10 +266,10 @@ class TurnStateManager:
             rerun_of: If this turn is a rerun, the original turn number it replaces.
             edited:   True if this turn was generated from an edited user message.
             images:   The already-processed images list for this turn (the
-                      output of load_images_for_vision — [{filename, src, mime}]),
+                      output of load_images_for_vision - [{filename, src, mime}]),
                       if any were attached. Persisted as a small sidecar JSON so
                       a later /rerun can resend the exact same images without
-                      depending on the original file/path still existing —
+                      depending on the original file/path still existing -
                       local-file images are already base64-encoded into `src`
                       at this point, so this makes them just as durable as a
                       raw base64/data-URI image was from the start.
@@ -370,14 +370,14 @@ class TurnStateManager:
         self._save_ledger()
 
         # ── Prune archives beyond rolling window ──────────────────────────────
-        # Only prune if the current turn's backup succeeded — otherwise older
+        # Only prune if the current turn's backup succeeded - otherwise older
         # restorable archives would be deleted with nothing to replace them.
         if zip_name is not None:
             self._prune_old_archives(turn_num)
 
 
     # ══════════════════════════════════════════════════════════════════════════
-    # PRUNE — rolling archive window
+    # PRUNE - rolling archive window
     # ══════════════════════════════════════════════════════════════════════════
 
     def _prune_old_archives(self, current_turn: int):
@@ -403,11 +403,11 @@ class TurnStateManager:
         Delete archive files (.zip, registry snaps, image snaps) for every
         ledger entry whose turn number is strictly greater than turn_num.
 
-        MUST be called BEFORE trimming the ledger — once entries are removed
+        MUST be called BEFORE trimming the ledger - once entries are removed
         their filenames are lost and the files become permanently orphaned on disk.
 
         Used by restore_turn() (full restore path). NOT called by /rerun or /edit
-        when keep_tail=True — those use delete_turn_archives() instead.
+        when keep_tail=True - those use delete_turn_archives() instead.
         """
         for entry in self._ledger:
             if entry.get("turn", 0) > turn_num:
@@ -428,7 +428,7 @@ class TurnStateManager:
         exactly one turn and remove its ledger entry.
 
         Used by /rerun and /edit user when keep_tail=True is passed to
-        truncate_history_only() — the blanket _delete_orphan_archives_after()
+        truncate_history_only() - the blanket _delete_orphan_archives_after()
         is skipped in that path, so this handles cleanup of only the single
         turn being replaced, leaving T(N+1)..T(current) archives intact so
         /restore still works for those turns.
@@ -445,12 +445,12 @@ class TurnStateManager:
                             os.remove(fpath)
                     except Exception:
                         pass
-            # Remove only this turn's ledger entry — tail entries are preserved.
+            # Remove only this turn's ledger entry - tail entries are preserved.
             self._ledger = [e for e in self._ledger if e.get("turn") != turn_num]
             self._save_ledger()
 
     # ══════════════════════════════════════════════════════════════════════════
-    # DELETE — remove a single turn pair and renumber everything after it
+    # DELETE - remove a single turn pair and renumber everything after it
     # ══════════════════════════════════════════════════════════════════════════
 
     def delete_turn(self, turn_num: int, agent) -> str:
@@ -459,17 +459,17 @@ class TurnStateManager:
         all data stores consistent.
 
         What changes:
-          • chat_history — pair at index (N-1)*2 and (N-1)*2+1 is spliced out.
-          • Archives for deleted turn — scratch.zip and registry.json are deleted.
-          • Archives for turns N+1..max — renamed to N..max-1 (ascending order
+          • chat_history - pair at index (N-1)*2 and (N-1)*2+1 is spliced out.
+          • Archives for deleted turn - scratch.zip and registry.json are deleted.
+          • Archives for turns N+1..max - renamed to N..max-1 (ascending order
             to avoid collisions: turn_4→turn_3 before turn_5→turn_4, etc.).
-          • Ledger — entry for N is removed; entries for N+1..max get turn-=1
+          • Ledger - entry for N is removed; entries for N+1..max get turn-=1
             and updated filenames.
 
         What does NOT change:
-          • live scratch/ workspace — completely untouched.
-          • uploads/, outputs/ — untouched.
-          • Global .jsonl history — append-only; never mutated.
+          • live scratch/ workspace - completely untouched.
+          • uploads/, outputs/ - untouched.
+          • Global .jsonl history - append-only; never mutated.
 
         Returns a Rich-formatted status string.
         """
@@ -503,7 +503,7 @@ class TurnStateManager:
 
         # ── Step 3: Rename subsequent archives (ascending order is critical) ──
         # Renaming turn_4→turn_3 before turn_5→turn_4 prevents overwriting.
-        # Missing files are silently skipped — not all turns have archives
+        # Missing files are silently skipped - not all turns have archives
         # (e.g. pure-chat turns or turns whose archives were already pruned).
         for t in range(turn_num + 1, current_turns + 1):
             self._await_zip(t)  # don't rename a zip that's still being written
@@ -587,7 +587,7 @@ class TurnStateManager:
         )
 
     # ══════════════════════════════════════════════════════════════════════════
-    # RESTORE — full pipeline
+    # RESTORE - full pipeline
     # ══════════════════════════════════════════════════════════════════════════
 
     def restore_turn(self, turn_num: int, agent) -> str:
@@ -671,7 +671,7 @@ class TurnStateManager:
                 except Exception:
                     _locked.append(item_path)  # track instead of silently skipping
 
-            # One retry after a brief pause — Windows file locks often release quickly
+            # One retry after a brief pause - Windows file locks often release quickly
             if _locked:
                 import time as _t; _t.sleep(0.3)
                 _still_locked = []
@@ -703,7 +703,7 @@ class TurnStateManager:
                 shutil.copy2(reg_path, config.WORKSPACE_REGISTRY_FILE)
                 agent.workspace_tracker._load_registry()
                 # Bug 11: also purge the on-disk bm25_cache.pkl, not just the
-                # in-memory index — otherwise the stale pickle (newer mtime
+                # in-memory index - otherwise the stale pickle (newer mtime
                 # than the just-restored, older registry) gets reloaded as
                 # if valid, returning phantom search results from turns that
                 # no longer exist post-restore.
@@ -720,7 +720,7 @@ class TurnStateManager:
             except Exception:
                 pass
 
-        # Invalidate code search index — scratch files reverted, index is stale
+        # Invalidate code search index - scratch files reverted, index is stale
         if hasattr(agent, 'code_search_agent') and agent.code_search_agent:
             agent.code_search_agent.invalidate_index()
 
@@ -730,7 +730,7 @@ class TurnStateManager:
         agent._uploads_cache = None
 
         # ── 3 & 4. Truncate agent memory + trim ledger ─────────────────────────
-        # Factored into its own method so /rerun can call ONLY this part —
+        # Factored into its own method so /rerun can call ONLY this part -
         # see truncate_history_only() below.
         self.truncate_history_only(turn_num, agent)
 
@@ -748,7 +748,7 @@ class TurnStateManager:
         )
 
     # ══════════════════════════════════════════════════════════════════════════
-    # HISTORY-ONLY TRUNCATION  (used by /rerun — does NOT touch scratch/)
+    # HISTORY-ONLY TRUNCATION  (used by /rerun - does NOT touch scratch/)
     # ══════════════════════════════════════════════════════════════════════════
 
     def truncate_history_only(self, turn_num: int, agent, keep_tail: bool = False) -> str:
@@ -756,11 +756,11 @@ class TurnStateManager:
         Truncate agent.chat_history to end-of-turn N, WITHOUT touching
         scratch/ or the workspace registry.
 
-        keep_tail=False (default) — also deletes all archives and ledger
+        keep_tail=False (default) - also deletes all archives and ledger
             entries for turns > turn_num. Used by restore_turn() and the
             old /rerun behaviour.
 
-        keep_tail=True — skips archive deletion and ledger trimming for
+        keep_tail=True - skips archive deletion and ledger trimming for
             turns beyond turn_num. Used by /rerun and /edit user when the
             tail turns (T(N+1)..T(current)) are being preserved and
             re-appended after regeneration. The caller is responsible for
@@ -768,7 +768,7 @@ class TurnStateManager:
             delete_turn_archives().
         """
         agent.chat_history            = agent.chat_history[:turn_num * 2]
-        agent.last_tool_summary       = ""    # stale — would confuse next turn's context
+        agent.last_tool_summary       = ""    # stale - would confuse next turn's context
         # Bug 14 follow-up: also clear the cancelled-turn summary here. Without
         # this, a turn cancelled just before a /restore or /rerun would have
         # its "[PREVIOUS TURN WAS CANCELLED...]" note survive the truncation
@@ -783,7 +783,7 @@ class TurnStateManager:
         if not keep_tail:
             # Delete orphaned archive files (scratch zip, registry snap, image
             # snap) for turns > turn_num BEFORE trimming the ledger, so we
-            # still have the filenames to look up — they become permanently
+            # still have the filenames to look up - they become permanently
             # unreachable once their ledger entry is gone.
             self._delete_orphan_archives_after(turn_num)
             self._ledger = [e for e in self._ledger if e.get("turn", 0) <= turn_num]
@@ -802,7 +802,7 @@ class TurnStateManager:
         `images` param), for use by /rerun.
 
         Returns None if the turn had no images, its snapshot was pruned by
-        the rolling backup window, or the file is missing/corrupt — /rerun
+        the rolling backup window, or the file is missing/corrupt - /rerun
         treats None (when the turn DID have images per the ledger) as a hard
         stop rather than silently proceeding text-only.
         """
@@ -823,7 +823,7 @@ class TurnStateManager:
             return None
 
     # ══════════════════════════════════════════════════════════════════════════
-    # /turns — formatted timeline
+    # /turns - formatted timeline
     # ══════════════════════════════════════════════════════════════════════════
 
     def list_turns(self) -> str:
@@ -843,7 +843,7 @@ class TurnStateManager:
             outputs  = [_esc_markup(o) for o in entry.get("outputs_created", [])]
             bash     = [_esc_markup(b) for b in entry.get("model_bash", [])]
 
-            # Revision markers — shown when turn was a rerun or from an edit
+            # Revision markers - shown when turn was a rerun or from an edit
             rerun_of = entry.get("rerun_of")
             edited   = entry.get("edited", False)
             markers  = ""
@@ -855,7 +855,7 @@ class TurnStateManager:
             # Archive availability tag
             zip_name    = entry.get("scratch_zip")
             if zip_name:
-                self._await_zip(t, timeout=2.0)  # short — this is just a display check
+                self._await_zip(t, timeout=2.0)  # short - this is just a display check
             has_archive = bool(
                 zip_name and
                 os.path.exists(os.path.join(config.BACKUPS_DIR, zip_name))
@@ -875,7 +875,7 @@ class TurnStateManager:
             if outputs:
                 parts.append(f"[blue]→[/blue] outputs/{', '.join(outputs)}")
             if bash:
-                # Always show bash summary — it's the primary file creation path
+                # Always show bash summary - it's the primary file creation path
                 parts.append(f"[dim]$ {bash[0][:50]}{'…' if len(bash[0]) > 50 else ''}[/dim]")
                 if len(bash) > 1:
                     parts.append(f"[dim]  (+{len(bash)-1} more bash cmd(s))[/dim]")
@@ -891,7 +891,7 @@ class TurnStateManager:
         return "\n".join(lines)
 
     # ══════════════════════════════════════════════════════════════════════════
-    # CLEAR ALL — called by /reset
+    # CLEAR ALL - called by /reset
     # ══════════════════════════════════════════════════════════════════════════
 
     def clear_all(self):

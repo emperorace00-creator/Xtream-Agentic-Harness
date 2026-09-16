@@ -33,7 +33,7 @@ def _code_tokenizer(text: str) -> list:
     - UPPER_CONST → ['upper', 'const']
     - dotted.names → ['dotted', 'names']
 
-    This dramatically improves recall — a query for "database connection"
+    This dramatically improves recall - a query for "database connection"
     will match a file containing `DatabaseConnection` or `db_connect`.
     """
     # Step 1: split camelCase and PascalCase  (insertBefore → insert Before)
@@ -72,7 +72,7 @@ class WorkspaceTracker:
         self._bm25_paths  = []     # ordered list matching BM25 corpus rows
         self._bm25_dirty  = False  # True when index needs rebuild
 
-        # Registry dirty flag — set True whenever file_registry / folder_registry
+        # Registry dirty flag - set True whenever file_registry / folder_registry
         # changes. Flushed to disk in one atomic write by flush_registry().
         # This batches all writes from a reconcile cycle into a single I/O op.
         self._registry_dirty = False
@@ -96,11 +96,11 @@ class WorkspaceTracker:
         """
         Always return a forward-slash relative path from workspace root.
         Uses os.path.relpath so it works correctly on Windows regardless
-        of drive-letter casing — no fragile startswith() check needed.
+        of drive-letter casing - no fragile startswith() check needed.
         """
         rel = os.path.relpath(filepath, self.workspace_path).replace('\\', '/')
         # On Windows, os.path.relpath returns an absolute path (e.g. "D:/...") when
-        # filepath is on a different drive than workspace_path — isabs() catches this.
+        # filepath is on a different drive than workspace_path - isabs() catches this.
         if os.path.isabs(rel):
             raise ValueError(f"Path traversal detected: {filepath} is on a different drive from the workspace.")
         if rel.startswith('../') or rel == '..':
@@ -118,7 +118,7 @@ class WorkspaceTracker:
         try:
             rel_path = self._normalize_rel_path(folder_path)
         except ValueError:
-            # Path is outside the scratch workspace (e.g. /outputs/) — silently skip.
+            # Path is outside the scratch workspace (e.g. /outputs/) - silently skip.
             return {"success": True, "path": folder_path, "new": False}
 
         try:
@@ -138,11 +138,11 @@ class WorkspaceTracker:
             return {"success": False, "error": str(e)}
 
     def track_file_write(self, filepath: str, content: str) -> None:
-        """Track a file write — updates registry and BM25 index."""
+        """Track a file write - updates registry and BM25 index."""
         try:
             rel_path = self._normalize_rel_path(filepath)
         except ValueError:
-            # File is outside the scratch workspace (e.g. /outputs/) — silently skip.
+            # File is outside the scratch workspace (e.g. /outputs/) - silently skip.
             return
 
         content_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
@@ -150,7 +150,7 @@ class WorkspaceTracker:
         if not self._is_project_file(rel_path):
             return
 
-        # Track parent folder (suppress inner save — we save once below)
+        # Track parent folder (suppress inner save - we save once below)
         parent_folder = os.path.dirname(rel_path)
         if parent_folder and parent_folder != '.':
             self.track_folder(os.path.join(self.workspace_path, parent_folder), _internal=True)
@@ -169,11 +169,11 @@ class WorkspaceTracker:
             and self.file_registry[rel_path]["hash"] == content_hash
         )
 
-        # Update registry and mark dirty — flush below (and again at end of reconcile)
+        # Update registry and mark dirty - flush below (and again at end of reconcile)
         self.file_registry[rel_path] = meta
         self._registry_dirty = True
 
-        # Update BM25 index (store full content — no token limit)
+        # Update BM25 index (store full content - no token limit)
         # Bug #33 fix: only skip .txt files that have a paired .chunks.json sidecar
         # (i.e. they're genuinely ingested PDFs covered by doc_search). A plain
         # notes.txt or script.txt without a sidecar deserves BM25 coverage too.
@@ -201,7 +201,7 @@ class WorkspaceTracker:
             rel_path = self._normalize_rel_path(filepath)
         except ValueError:
             # Path is outside the tracked workspace (e.g. a stale registry
-            # entry pointing at a deleted drive) — there is nothing in the
+            # entry pointing at a deleted drive) - there is nothing in the
             # registry or BM25 index to remove, so this is a no-op rather
             # than a crash. Mirrors the identical guard in track_file_write.
             console.print(f"[dim]remove_file: '{filepath}' is outside the workspace, skipping.[/dim]")
@@ -319,10 +319,10 @@ class WorkspaceTracker:
           times in a file (TF-IDF over-rewards pure repetition).
         - Document length normalization: long files aren't unfairly boosted
           just because they contain more tokens overall.
-        - Same code-aware tokenizer as before — snake_case / camelCase aware.
+        - Same code-aware tokenizer as before - snake_case / camelCase aware.
         - No token limit, no model download, pure Python, ~5ms rebuild.
         - min_score=0.01: BM25 scores are raw (not normalized 0-1), so the
-          threshold is low — non-zero score already means at least one query
+          threshold is low - non-zero score already means at least one query
           token matched. Scores of 1-20+ are typical strong matches.
 
         Args:
@@ -372,11 +372,11 @@ class WorkspaceTracker:
 
             score = float(scores[idx])
             if score < min_score:
-                break  # scores are sorted descending — safe early exit
+                break  # scores are sorted descending - safe early exit
 
             rel_path = self._bm25_paths[idx]
 
-            # file_filter: skip non-matching candidates but keep scanning —
+            # file_filter: skip non-matching candidates but keep scanning -
             # ranked is globally sorted by score, so a filtered-out doc here
             # doesn't mean lower-ranked docs should also be skipped.
             if file_filter and not fnmatch.fnmatch(os.path.basename(rel_path), file_filter):
@@ -431,7 +431,7 @@ class WorkspaceTracker:
                     corpus = cached.get("corpus", [])
                     if paths and corpus and len(paths) == len(corpus):
                         self._bm25_paths = paths
-                        # Re-index content as empty strings — enough for cache hit;
+                        # Re-index content as empty strings - enough for cache hit;
                         # actual content loaded lazily if a file changes later.
                         self._bm25_index = {p: "" for p in paths}
                         self._bm25_model = BM25Okapi(corpus)
@@ -443,7 +443,7 @@ class WorkspaceTracker:
 
         for rel_path in self.file_registry:
             if rel_path not in self._bm25_index:
-                # Skip .txt files — these are ingested PDF documents, not code.
+                # Skip .txt files - these are ingested PDF documents, not code.
                 # doc_search (chunk embeddings) handles retrieval for those.
                 if rel_path.lower().endswith('.txt'):
                     sidecar = os.path.join(self.workspace_path, rel_path[:-4] + ".chunks.json")
@@ -477,7 +477,7 @@ class WorkspaceTracker:
                     with open(_full_path, "r", encoding="utf-8", errors="ignore") as _f:
                         self._bm25_index[_rel] = _f.read()
                 except Exception:
-                    pass  # leave as "" — produces empty token list (acceptable)
+                    pass  # leave as "" - produces empty token list (acceptable)
 
         try:
             self._bm25_paths     = list(self._bm25_index.keys())
@@ -498,7 +498,7 @@ class WorkspaceTracker:
                     pickle.dump({"paths": self._bm25_paths, "corpus": tokenized_corpus}, _pf,
                                 protocol=pickle.HIGHEST_PROTOCOL)
             except Exception:
-                pass  # non-fatal — worst case we rebuild on next restart
+                pass  # non-fatal - worst case we rebuild on next restart
 
         except Exception as e:
             console.print(f"⚠️  [yellow]BM25 rebuild failed: {e}[/yellow]")

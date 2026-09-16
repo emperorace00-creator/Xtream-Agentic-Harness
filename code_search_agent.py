@@ -2,23 +2,23 @@
 """
 Powers workspace_search(semantic=true). Two responsibilities:
 
-1. CHUNKING — chunk_code_file(filepath, rel_path):
+1. CHUNKING - chunk_code_file(filepath, rel_path):
    Parses a source file into "interesting" units (functions, classes, methods)
    using tree-sitter when a grammar is available for the language, with a
    regex-based (blank-line + fixed-window) fallback otherwise. Every chunk is
    given an enriched `embed_text` ("# File: X | function: Y\n# <docstring>\n\n<code>")
    so retrieval keys on file/symbol context, not just raw code tokens.
 
-2. INDEX + SEARCH — CodeSearchAgent:
+2. INDEX + SEARCH - CodeSearchAgent:
    Maintains database/code_index/code_index.json: a per-file MD5 hash map plus
-   a flat list of embedded chunks. Rebuilds are incremental — only files whose
-   hash has changed are re-chunked and re-embedded — and lazy: mark_stale()
+   a flat list of embedded chunks. Rebuilds are incremental - only files whose
+   hash has changed are re-chunked and re-embedded - and lazy: mark_stale()
    (called after every bash/str_replace) just flips a boolean; the actual
    re-embed only happens the next time search() is called with semantic=true.
 
 Design decisions (see implementation_plan.md for the full writeup):
   - Codestral Embed is a *separate* provider/model from the NVIDIA Nemotron
-    embeddings used by doc_search_agent.py / search_history — hence its own
+    embeddings used by doc_search_agent.py / search_history - hence its own
     _embed_code()/_embed_code_batched() in utils.py rather than reusing _embed().
   - Chunk/file paths are stored in *container* form (/workspace/scratch/...),
     matching what the model already uses in other tool calls, via
@@ -64,7 +64,7 @@ except ImportError:
 # AST node types that tree-sitter's grammar for each language uses to mark
 # "interesting" chunks (functions, classes, methods, top-level types).
 # Languages not listed here always use the regex fallback, no tree-sitter
-# attempt is made — this includes markdown/txt/yaml/json/css/html/sql/bash,
+# attempt is made - this includes markdown/txt/yaml/json/css/html/sql/bash,
 # which don't have a meaningful "function/class" structure worth chunking on.
 CHUNK_NODE_TYPES = {
     "python":     {"function_definition", "class_definition", "decorated_definition"},
@@ -82,7 +82,7 @@ CHUNK_NODE_TYPES = {
 }
 
 # Buckets used to classify a matched node into a chunk "kind". A node type may
-# appear in exactly one of these — used across every language's node set above.
+# appear in exactly one of these - used across every language's node set above.
 _FUNCTION_TYPES = {
     "function_definition", "function_declaration", "function_item",
     "arrow_function", "method_definition", "method_declaration", "method",
@@ -93,7 +93,7 @@ _CLASS_TYPES = {
 _TYPE_TYPES = {
     "type_declaration", "struct_item", "interface_declaration", "module",
 }
-# Wrapper nodes that don't themselves carry a name/kind — the real definition
+# Wrapper nodes that don't themselves carry a name/kind - the real definition
 # is one of their children. We keep the WRAPPER's line span (so decorators /
 # `export` keywords are included in the chunk) but classify + name from the
 # inner node.
@@ -136,7 +136,7 @@ def _build_embed_text(rel_path: str, kind: str, name: str, doc_first_line: str,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CHUNKING — tree-sitter path
+# CHUNKING - tree-sitter path
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _classify(node_type: str) -> str:
@@ -152,7 +152,7 @@ def _classify(node_type: str) -> str:
 def _chunk_via_treesitter(text: str, language: str, rel_path: str) -> list:
     """
     AST-parse `text` with tree-sitter and extract one CodeChunk per function,
-    class, and method. Raises on any unexpected error — callers must catch
+    class, and method. Raises on any unexpected error - callers must catch
     and fall back to _chunk_via_regex().
     """
     parser    = get_parser(language)
@@ -188,7 +188,7 @@ def _chunk_via_treesitter(text: str, language: str, rel_path: str) -> list:
         return "<anonymous>"
 
     def docstring_first_line(node) -> str:
-        """Best-effort: python/JS-style — first statement of the body if it's
+        """Best-effort: python/JS-style - first statement of the body if it's
         a bare string expression (python docstring) or a leading line comment
         immediately preceding the definition."""
         body = node.child_by_field_name("body")
@@ -223,7 +223,7 @@ def _chunk_via_treesitter(text: str, language: str, rel_path: str) -> list:
 
             inner, kind = unwrap(child)
             if kind == "block":
-                # Wrapper node with nothing recognisable inside — recurse past it.
+                # Wrapper node with nothing recognisable inside - recurse past it.
                 walk(child, parent_class)
                 continue
 
@@ -249,7 +249,7 @@ def _chunk_via_treesitter(text: str, language: str, rel_path: str) -> list:
 
             if kind == "class":
                 walk(inner, parent_class=name)
-            # Do not recurse into function/method bodies — nested closures stay
+            # Do not recurse into function/method bodies - nested closures stay
             # embedded in their parent's chunk text rather than becoming noisy
             # duplicate mini-chunks.
 
@@ -258,7 +258,7 @@ def _chunk_via_treesitter(text: str, language: str, rel_path: str) -> list:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CHUNKING — regex fallback path
+# CHUNKING - regex fallback path
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _chunk_via_regex(text: str, rel_path: str, language: str) -> list:
@@ -326,7 +326,7 @@ def _chunk_via_regex(text: str, rel_path: str, language: str) -> list:
 
 
 def _split_oversized_chunk(chunk: CodeChunk) -> list:
-    """A single AST node (e.g. a huge class) exceeded CODE_CHUNK_MAX_LINES —
+    """A single AST node (e.g. a huge class) exceeded CODE_CHUNK_MAX_LINES -
     split it into fixed windows so no one chunk dominates the embedding
     budget or the search results."""
     lines     = chunk.text.split("\n")
@@ -356,7 +356,7 @@ def chunk_code_file(filepath: str, rel_path: str) -> list:
     """
     Parse a file on disk into CodeChunks.
 
-    1. Detect language from extension (reuses utils.detect_language — the
+    1. Detect language from extension (reuses utils.detect_language - the
        same map view_lines/search_in_file already use for syntax highlighting).
     2. If tree-sitter is available and the language has a node-type table,
        try an AST parse; any exception falls back to regex chunking for this
@@ -415,7 +415,7 @@ def chunk_code_file(filepath: str, rel_path: str) -> list:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _should_index(filepath: str) -> bool:
-    """Files that must NEVER be indexed — secrets, key files, VCS/dep dirs,
+    """Files that must NEVER be indexed - secrets, key files, VCS/dep dirs,
     and anything outside the extension allowlist (binaries, joblib/pkl, etc.)."""
     basename = os.path.basename(filepath)
     if basename in config.CODE_INDEX_EXCLUDE:
@@ -423,7 +423,7 @@ def _should_index(filepath: str) -> bool:
     if basename.endswith(".key"):
         return False
     # Bug 3: doc_search artifacts (.chunks.json, .embed.json) are JSON files
-    # that contain large embedding arrays — they'd get indexed as "code",
+    # that contain large embedding arrays - they'd get indexed as "code",
     # polluting search results with doc_search internals and wasting token budget.
     if basename.endswith(".chunks.json") or basename.endswith(".embed.json"):
         return False
@@ -496,11 +496,11 @@ class CodeSearchAgent:
     Lifecycle:
       - Constructed once in EmperorAgent.__init__ with
         search_dirs=[config.SCRATCH_DIR, config.UPLOADS_FOLDER].
-      - mark_stale() is called after every bash/str_replace — a cheap flag
+      - mark_stale() is called after every bash/str_replace - a cheap flag
         flip, no embed calls.
       - The actual (incremental) re-embed happens lazily, inside search(),
         the first time the model asks for semantic=true after something changed.
-      - invalidate_index() is called by /restore — the workspace changed via a
+      - invalidate_index() is called by /restore - the workspace changed via a
         zip-unpack, so on-disk file hashes can't be trusted incrementally;
         wipe and rebuild fully on the next query.
     """
@@ -512,16 +512,16 @@ class CodeSearchAgent:
         self.index_path  = os.path.join(self.index_dir, "code_index.json")
         self._index        = None   # lazy-loaded dict: version/embed_model/file_hashes/chunks
         self._index_loaded = False
-        self._stale         = True  # starts stale — first semantic query triggers a build
+        self._stale         = True  # starts stale - first semantic query triggers a build
 
     # ── Public API ──────────────────────────────────────────────────────
 
     def mark_stale(self):
-        """Called after bash/str_replace — just flips a flag, no embed calls."""
+        """Called after bash/str_replace - just flips a flag, no embed calls."""
         self._stale = True
 
     def invalidate_index(self):
-        """Called by /restore — wipes the index, forces a full rebuild on next query."""
+        """Called by /restore - wipes the index, forces a full rebuild on next query."""
         self._index        = None
         self._index_loaded = False
         self._stale         = True
@@ -536,29 +536,29 @@ class CodeSearchAgent:
         Incremental index build:
           1. Load existing index from disk (if any), or start from a skeleton.
           2. Walk search_dirs, compute an MD5 hash per file.
-          3. Compare against stored file_hashes — unchanged files are skipped
+          3. Compare against stored file_hashes - unchanged files are skipped
              entirely (their existing chunks + embeddings are kept as-is);
              new/changed files are re-chunked and their chunks re-embedded;
              deleted files have their chunks dropped.
           4. Save the updated index atomically.
 
         Editing one file only re-embeds that one file's chunks, not the whole
-        codebase — this is what keeps semantic search cheap enough to run on
+        codebase - this is what keeps semantic search cheap enough to run on
         every query instead of only at startup.
 
         Commit is per-file, not per-loop: a file's new hash is only written
         once every one of its chunks has either a real embedding, or was
         permanently too large to ever embed (see _embed_code_batched's
-        oversized_indices) — or the file produced zero chunks in the first
+        oversized_indices) - or the file produced zero chunks in the first
         place (nothing to embed, nothing that can fail). A file with a
         genuinely failed chunk (rate limit, exhausted retries, etc.) has its
-        hash left unwritten — its stale chunks were already dropped, so it's
+        hash left unwritten - its stale chunks were already dropped, so it's
         simply absent from the index until the next build retries it, rather
         than silently serving a partially-embedded or pre-edit version. An
         oversized chunk is different: retrying changes nothing (the same
         estimate recurs every build), so that one chunk is excluded
         permanently while the rest of the file still commits and stays
-        searchable — otherwise a single huge chunk (e.g. one minified line
+        searchable - otherwise a single huge chunk (e.g. one minified line
         in an indexed .json file) would blank out the whole file forever
         and burn an API call re-embedding its other chunks on every query.
         Files that embedded cleanly are still saved immediately, so they
@@ -571,7 +571,7 @@ class CodeSearchAgent:
         if self._index is None:
             loaded = self._load_index()
             # _load_index() returns None when stored model/dimension differs from
-            # config (Bug 2) — treat that the same as force=True: start fresh so
+            # config (Bug 2) - treat that the same as force=True: start fresh so
             # we never mix old vectors of the wrong shape with new ones.
             self._index = loaded if loaded is not None else {
                 "version":         1,
@@ -610,7 +610,7 @@ class CodeSearchAgent:
             except OSError:
                 continue
             if old_hashes.get(cpath) == new_hash:
-                continue   # unchanged — keep existing chunks + embeddings
+                continue   # unchanged - keep existing chunks + embeddings
 
             try:
                 new_chunks = chunk_code_file(apath, cpath)
@@ -626,13 +626,13 @@ class CodeSearchAgent:
                 to_embed_owner.append((cpath, ch))
 
         # Drop stale chunks now, only for files we're actually about to
-        # replace (chunking already succeeded for these) — old copies of
+        # replace (chunking already succeeded for these) - old copies of
         # files that failed to chunk are left untouched above.
         for cpath in pending_hashes:
             chunks_by_file.pop(cpath, None)
 
         if to_embed_texts:
-            # The only place that spends Mistral API calls/tokens — only
+            # The only place that spends Mistral API calls/tokens - only
             # chunks belonging to genuinely new/changed files.
             embeddings, oversized_idx = _embed_code_batched(to_embed_texts)
             embedded_by_file: dict = {}
@@ -641,7 +641,7 @@ class CodeSearchAgent:
 
             for cpath, triples in embedded_by_file.items():
                 # A file's hash is only withheld (forcing a retry on the next
-                # build) for a *genuine* embed failure — a chunk whose emb is
+                # build) for a *genuine* embed failure - a chunk whose emb is
                 # None but wasn't in oversized_idx (rate limit, exhausted
                 # bisect-and-retry, etc.). A chunk that's permanently too big
                 # for the model (oversized_idx) is NOT such a failure: its
@@ -649,7 +649,7 @@ class CodeSearchAgent:
                 # build, so retrying only repeats the same skip forever while
                 # needlessly re-embedding the file's other, perfectly good
                 # chunks on every single semantic query. Treat it instead as
-                # a deliberate, permanent exclusion of just that one chunk —
+                # a deliberate, permanent exclusion of just that one chunk -
                 # the rest of the file still gets indexed and its hash still
                 # commits, so it doesn't vanish from search entirely.
                 genuinely_failed = any(
@@ -673,7 +673,7 @@ class CodeSearchAgent:
                     )
                 for ch, emb, is_oversized in triples:
                     if is_oversized:
-                        continue  # deliberately excluded — no embedding to store
+                        continue  # deliberately excluded - no embedding to store
                     chunks_by_file.setdefault(cpath, []).append({
                         "file": ch.file, "name": ch.name, "kind": ch.kind,
                         "start_line": ch.start_line, "end_line": ch.end_line,
@@ -683,7 +683,7 @@ class CodeSearchAgent:
                 old_hashes[cpath] = pending_hashes[cpath]
 
         # Files that produced zero chunks (e.g. everything under
-        # CODE_CHUNK_MIN_LINES) never entered to_embed_texts — nothing to
+        # CODE_CHUNK_MIN_LINES) never entered to_embed_texts - nothing to
         # embed, nothing that can fail, so commit their hash right away.
         for cpath, new_chunks in pending_chunks.items():
             if not new_chunks:
@@ -694,7 +694,7 @@ class CodeSearchAgent:
         self._index["embed_model"]     = config.CODE_EMBED_MODEL
         self._index["embed_dimension"] = config.CODE_EMBED_DIMENSION
 
-        # Save whatever did commit — successful files must not be
+        # Save whatever did commit - successful files must not be
         # re-embedded next time even if others in this batch failed.
         save_json_atomic(self.index_path, self._index)
 
@@ -713,7 +713,7 @@ class CodeSearchAgent:
         5. Return the top-K formatted with file paths, line numbers, and code.
 
         Raises RuntimeError if MISTRAL_API_KEY_FILE isn't configured or an
-        embed call fails outright — callers (file_ops_agent.search_workspace)
+        embed call fails outright - callers (file_ops_agent.search_workspace)
         catch this and fall back to BM25.
         """
         api_key = read_api_key_cached(config.MISTRAL_API_KEY_FILE)
@@ -732,7 +732,7 @@ class CodeSearchAgent:
 
         if not chunks:
             if self._stale:
-                # build_index() just ran and still left us stale — some
+                # build_index() just ran and still left us stale - some
                 # file(s) failed to embed (rate limit, token overflow, etc.)
                 # and nothing else is indexed. Raise so the caller
                 # (file_ops_agent.search_workspace) falls back to BM25 for
@@ -743,7 +743,7 @@ class CodeSearchAgent:
                     "embed attempt failed for one or more files. Retrying on "
                     "the next semantic search."
                 )
-            # Not stale and still empty — a genuinely empty workspace (or a
+            # Not stale and still empty - a genuinely empty workspace (or a
             # filter that matched nothing), not a failure. Don't fall back.
             suffix = f" matching filter '{file_filter}'" if file_filter else ""
             return (
@@ -786,7 +786,7 @@ class CodeSearchAgent:
         """Load the on-disk index, or return a fresh empty skeleton.
 
         Returns None if the on-disk index exists but was built with a different
-        embed_model or embed_dimension than the current config — signals the
+        embed_model or embed_dimension than the current config - signals the
         caller (build_index) to do a full rebuild rather than mixing old vectors
         of the wrong shape with new ones (which would cause cosine_similarity to
         raise on inhomogeneous arrays, or silently return wrong scores).

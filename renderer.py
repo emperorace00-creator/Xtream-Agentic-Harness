@@ -21,7 +21,7 @@ _latex_converter = LatexNodes2Text()
 
 # ── LaTeX pre-processing, BEFORE pylatexenc ever sees the string ──────────────
 # pylatexenc's LatexNodes2Text silently DISCARDS macros it doesn't recognize
-# (rather than leaving them as literal text) — and since this runs before the
+# (rather than leaving them as literal text) - and since this runs before the
 # _bare fallback dict below, anything dropped here never gets a second chance.
 # \implies and \| are common cases that fall into this gap: \Rightarrow (which
 # IS in pylatexenc's table) renders fine, while \implies vanishes with zero
@@ -40,7 +40,7 @@ _PRE_LATEX_MACRO_FIXUPS = {
     r'\rvert':     '|',
     # \| itself is ambiguous in real LaTeX (renders as ‖), but in this
     # codebase's usage it's consistently used as an escaped absolute-value
-    # bar (\|x\|) alongside plain |x| in the SAME response — mapping it to a
+    # bar (\|x\|) alongside plain |x| in the SAME response - mapping it to a
     # plain pipe keeps it consistent with the existing '|' → '∣' swap below,
     # rather than silently disappearing.
     r'\|':         '|',
@@ -64,7 +64,7 @@ def _fmt_frac_exp(m: re.Match) -> str:
     separated by U+2044 FRACTION SLASH (\u2044).
 
     pylatexenc only converts the FIRST token of a compound exponent like ^{3/2},
-    leaving the rest as plain text — producing the ambiguous "Δ3/2" which reads
+    leaving the rest as plain text - producing the ambiguous "Δ3/2" which reads
     as "Δ-cubed divided by 2" instead of "Δ to the power 3/2". Calling this
     BEFORE pylatexenc avoids that mangling entirely.
 
@@ -83,7 +83,7 @@ def _apply_pre_latex_fixups(latex_src: str) -> str:
     converts the most common dropped macros to safe equivalents so they
     survive the pylatexenc pass.
     """
-    # ── Modular arithmetic, binomials, boxed elements ——————————————
+    # ── Modular arithmetic, binomials, boxed elements --------------
     latex_src = re.sub(r'\\pmod\{([^{}]*)\}', r' (mod \1)', latex_src)
     latex_src = re.sub(r'\\pod\{([^{}]*)\}', r' (\1)', latex_src)
     latex_src = re.sub(r'\\[dt]?binom\{([^{}]*)\}\{([^{}]*)\}', r'C(\1,\2)', latex_src)
@@ -92,7 +92,7 @@ def _apply_pre_latex_fixups(latex_src: str) -> str:
     for macro, replacement in _PRE_LATEX_MACRO_FIXUPS.items():
         latex_src = latex_src.replace(macro, replacement)
 
-    # ── Ensure spaces around math functions —───────────────────────
+    # ── Ensure spaces around math functions -───────────────────────
     # Prevents pylatexenc from fusing subscripts and functions (e.g. T_1\sin → T_1sin),
     # which would cause the bare subscript converter to mangle "1sin" into "₁ₛᵢₙ".
     latex_src = re.sub(
@@ -100,21 +100,21 @@ def _apply_pre_latex_fixups(latex_src: str) -> str:
         r' \1 ', latex_src
     )
 
-    # ── Extensible named arrows —————————————————────────——————
+    # ── Extensible named arrows -----------------────────------
     # pylatexenc silently drops \xrightarrow / \xleftarrow (not in its table).
-    # Convert here so the arrow survives. Use PARENS not brackets — Rich would
+    # Convert here so the arrow survives. Use PARENS not brackets - Rich would
     # misparse [label] as a markup tag in the rendered output.
     latex_src = re.sub(r'\\xrightarrow\{([^}]*)\}', ' →(\\1) ', latex_src)
     latex_src = re.sub(r'\\xleftarrow\{([^}]*)\}',  ' ←(\\1) ', latex_src)
     latex_src = re.sub(r'\\xLeftrightarrow\{([^}]*)\}', ' ⇔(\\1) ', latex_src)
     latex_src = re.sub(r'\\xmapsto\{([^}]*)\}', ' ↦(\\1) ', latex_src)
-    # \stackrel / \overset / \underset — pylatexenc drops these too
+    # \stackrel / \overset / \underset - pylatexenc drops these too
     latex_src = re.sub(r'\\(?:stackrel|overset)\{([^}]*)\}\{([^}]*)\}',
                        r'\2^{\1}', latex_src)
     latex_src = re.sub(r'\\underset\{([^}]*)\}\{([^}]*)\}',
                        r'\2_{\1}', latex_src)
 
-    # ── Compound fraction exponents: ^{3/2} —————————————————————
+    # ── Compound fraction exponents: ^{3/2} ---------------------
     # Must run BEFORE _wrap_frac_args_in_parens so the exponent is already
     # clean Unicode when pylatexenc receives the wrapped expression.
     latex_src = re.sub(r'\^\{(\d+)/(\d+)\}', _fmt_frac_exp, latex_src)
@@ -133,12 +133,12 @@ def _apply_pre_latex_fixups(latex_src: str) -> str:
 def _wrap_frac_args_in_parens(latex_src: str) -> str:
     """
     Rewrite every \\frac{NUM}{DEN} to (NUM)/(DEN), using a balanced-brace scan
-    (not a single-level regex) so nested braces inside NUM/DEN — e.g. a
-    fractional exponent like \\Delta^{3/2} — are extracted correctly instead
+    (not a single-level regex) so nested braces inside NUM/DEN - e.g. a
+    fractional exponent like \\Delta^{3/2} - are extracted correctly instead
     of matching on the wrong inner '}'.
 
     Combined with _fmt_frac_exp (which runs first in _apply_pre_latex_fixups),
-    \\frac{\\Delta^{3/2}}{6 A^2} now renders as "(Δ³⁄2)/(6A²)" — completely
+    \\frac{\\Delta^{3/2}}{6 A^2} now renders as "(Δ³⁄2)/(6A²)" - completely
     unambiguous. The old path without _fmt_frac_exp produced "(Δ³/2)/(6A²)" which
     still looked like Δ-cubed-over-2. _fmt_frac_exp eliminates that ambiguity
     by converting ^{3/2} to ³⁄2 (superscript-3 + fraction-slash + subscript-2)
@@ -161,7 +161,7 @@ def _wrap_frac_args_in_parens(latex_src: str) -> str:
                 depth -= 1
             k += 1
         if depth != 0:
-            return None  # unbalanced — leave untouched rather than corrupt it
+            return None  # unbalanced - leave untouched rather than corrupt it
         return s[j + 1:k - 1], k
 
     out = []
@@ -236,7 +236,7 @@ def show_image_in_terminal(image_path: str):
             # subprocess.run() block forever (turn never completes, history
             # never saved, next prompt never shown).
             # the timeout=15 is a
-            # safety net — if
+            # safety net - if
             # the process hasn't exited on its own, we kill it after 15 s.
             is_gif = image_path.lower().endswith(".gif")
             # Quality flags: 24-bit truecolor, all symbol types (incl. braille
@@ -269,7 +269,7 @@ def _copy_and_enhance(item_path: str, filename: str) -> str:
     Returns the absolute path to the enhanced copy so the caller can either
     base64-encode it (vision path) or pass it to OCR (OCR path).
 
-    The original file is never modified — only the enhanced copy is changed.
+    The original file is never modified - only the enhanced copy is changed.
     """
     os.makedirs(config.SCRATCH_DIR, exist_ok=True)
     scratch_path = os.path.abspath(os.path.join(config.SCRATCH_DIR, filename))
@@ -286,10 +286,10 @@ def _build_master_enhanced(item_path: str, filename: str) -> str:
     Produce a master enhanced image for the tiling pipeline.
 
     Applies (in order, via cv2):
-      1. Saturation-guarded inversion  — only if dark AND greyscale
-      2. Smart resize to 512–1536 px   — LANCZOS4
-      3. LAB-space CLAHE               — local contrast, colour-safe
-      4. Unsharp masking               — GaussianBlur addWeighted
+      1. Saturation-guarded inversion  - only if dark AND greyscale
+      2. Smart resize to 512–1536 px   - LANCZOS4
+      3. LAB-space CLAHE               - local contrast, colour-safe
+      4. Unsharp masking               - GaussianBlur addWeighted
 
     Falls back to a simpler PIL pipeline if cv2 is not installed.
     Returns the path to the master-enhanced file in scratch/.
@@ -402,12 +402,12 @@ def _build_master_enhanced(item_path: str, filename: str) -> str:
         lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
         l_ch, a_ch, b_ch = cv2.split(lab)
 
-        # Document-like images (low saturation — handwritten notes, photocopies,
+        # Document-like images (low saturation - handwritten notes, photocopies,
         # dark-mode screenshots) get percentile clipping BEFORE CLAHE to erase
         # back-page bleed-through. The 5th–80th percentile stretch forces the
         # faint mid-gray bleed (intensity ~140-170) and lighter paper to pure white
         # so CLAHE never mistakes it for low-contrast real ink and boosts it.
-        # Natural photos (avg_s >= 60) skip this — it would destroy mid-tones.
+        # Natural photos (avg_s >= 60) skip this - it would destroy mid-tones.
         if avg_s < 60:
             p_dark, p_light = np.percentile(l_ch, (5, 80))
             if p_light > p_dark:   # guard against degenerate (all-black) images
@@ -420,12 +420,12 @@ def _build_master_enhanced(item_path: str, filename: str) -> str:
                     f"(p5={p_dark:.0f} → black, p80={p_light:.0f} → white)[/dim cyan]"
                 )
 
-            # Gentler CLAHE — p80 percentile stretch did the heavy lifting;
+            # Gentler CLAHE - p80 percentile stretch did the heavy lifting;
             # lower clipLimit prevents accidentally amplifying any ghost text.
             clahe = cv2.createCLAHE(clipLimit=1.2, tileGridSize=(8, 8))
 
         else:
-            # Natural photo — full CLAHE, no percentile clipping
+            # Natural photo - full CLAHE, no percentile clipping
             clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 
         l_ch = clahe.apply(l_ch)
@@ -433,7 +433,7 @@ def _build_master_enhanced(item_path: str, filename: str) -> str:
 
         # ── 4. Unsharp mask (stronger for document crispness) ─────────────────
         # Weights (1.8, -0.8): output = img + 0.8 × high-freq detail.
-        # Gives ink a sharp, dark bite — equivalent to bold ink — without
+        # Gives ink a sharp, dark bite - equivalent to bold ink - without
         # the stroke-merging artefacts that morphological erosion causes.
         gaussian = cv2.GaussianBlur(img, (0, 0), 3.0)
         img = cv2.addWeighted(img, 1.8, gaussian, -0.8, 0)
@@ -594,7 +594,7 @@ def load_images_for_vision(image_input: str) -> list:
         {"filename": str, "src": str, "mime": str}
 
     src is a data URI for local files or a plain https URL for remote images.
-    Used when config.SUPPORTS_VISION is True — images go directly to the model.
+    Used when config.SUPPORTS_VISION is True - images go directly to the model.
     """
     if not image_input.strip():
         return []
@@ -677,7 +677,7 @@ def process_images_via_ocr(image_input: str, ocr_agent) -> str:
         → ocr_agent.process_images() (one API call per image, independently)
 
     ocr_agent: an ImageOCRAgent instance passed by the caller (start.py).
-    The original file is never modified — only enhanced copies are used.
+    The original file is never modified - only enhanced copies are used.
     """
     # Bug #14 fix: track all temp image files created by enhancement/tiling
     # and delete them when the OCR pass finishes, preventing scratch directory leak.
@@ -740,7 +740,7 @@ def process_images_via_ocr(image_input: str, ocr_agent) -> str:
                         _res["source"] = _filename   # label with original filename
                         ocr_results.append(_res)
                         continue
-                # Tiling produced no tiles — fall back to master image
+                # Tiling produced no tiles - fall back to master image
                 console.print(f"   [dim yellow]tiling produced no tiles — OCR'ing master image[/dim yellow]")
                 _res = ocr_agent.process_images(f'"{_master}"')
                 ocr_results.extend(_res)
@@ -860,7 +860,7 @@ def prep_for_console(text: str) -> str:
         except Exception:
             return m.group(0) # If it fails, return the original string untouched
 
-    # \[...\] and \(...\) — model sometimes outputs these instead of $$ / $
+    # \[...\] and \(...\) - model sometimes outputs these instead of $$ / $
     text = re.sub(r'\\\[(.+?)\\\]', lambda m: f'\n{replace_math(m)}\n', text, flags=re.DOTALL)
     text = re.sub(r'\\\((.+?)\\\)', replace_math, text, flags=re.DOTALL)
 
@@ -872,7 +872,7 @@ def prep_for_console(text: str) -> str:
     text = re.sub(r'(?<!\\)\$(?!\s)([^\n$]+?)(?<!\s)\$', replace_math, text)
 
     # ── 2. Named arrows (outside math blocks) ──────────────────────
-    # Use PARENS not brackets — Rich misparses [label] as a markup tag.
+    # Use PARENS not brackets - Rich misparses [label] as a markup tag.
     text = re.sub(r'\\xrightarrow\{([^}]+)\}', ' →(\\1) ', text)
     text = re.sub(r'\\xleftarrow\{([^}]+)\}',  ' ←(\\1) ', text)
     text = re.sub(r'\\xLeftrightarrow\{([^}]+)\}', ' ⇔(\\1) ', text)
@@ -904,11 +904,11 @@ def prep_for_console(text: str) -> str:
 
     # ── 2.2. \left / \right delimiter cleanup ──────────────
     # Models frequently write these outside math delimiters. Map to plain
-    # ASCII brackets — mathematically identical, no LaTeX garbage.
+    # ASCII brackets - mathematically identical, no LaTeX garbage.
     _DELIM_MAP = (
         # ─ Curly braces ──────────────────────────────────────────────────
         (r'\left\{',    '{'),   (r'\right\}',   '}'),   # braces FIRST
-        # ─ Angle brackets — MUST precede \left( so \left\langle is handled whole ─
+        # ─ Angle brackets - MUST precede \left( so \left\langle is handled whole ─
         (r'\left\langle','\u27e8'), (r'\right\rangle','\u27e9'),
         (r'\left\|',    '\u2016'),  (r'\right\|',    '\u2016'),  # double-bar norm
         # ─ Ordinary brackets ──────────────────────────────────────────────
@@ -937,7 +937,7 @@ def prep_for_console(text: str) -> str:
     # \mathbf{F}, \mathit{x}, \mathrm{d}, \mathcal{L}, \text{if x>0}
     # Strip the wrapper, keep the content. Loses font style (irrelevant
     # in terminal) but preserves the mathematical symbol exactly.
-    # NOTE: \mathbb is intentionally EXCLUDED here — specific double-struck
+    # NOTE: \mathbb is intentionally EXCLUDED here - specific double-struck
     # letters (\mathbb{R}→ℝ etc.) are handled by _bare in section 5.
     text = re.sub(r'\\math(?:bf|it|rm|cal|sf|tt|scr|frak|op|rel|bin|ord)\{([^{}]*)\}', r'\1', text)
     text = re.sub(r'\\(?:text|mbox|hbox)\{([^{}]*)\}', r'\1', text)
@@ -945,7 +945,7 @@ def prep_for_console(text: str) -> str:
     text = re.sub(r'\\(?:textbf|textit|emph)\{([^{}]*)\}', r'\1', text)
     text = re.sub(r'\\boldsymbol\{([^{}]*)\}', r'\1', text)   # \boldsymbol{\alpha} → \alpha
     text = re.sub(r'\\ensuremath\{([^{}]*)\}', r'\1', text)   # \ensuremath{x^2} → x^2
-    # Style switches that never carry content — simply erase them
+    # Style switches that never carry content - simply erase them
     text = re.sub(r'\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)\b', '', text)
 
     # ── 2.4. Binomial coefficients ─────────────────────────────────
@@ -1007,7 +1007,7 @@ def prep_for_console(text: str) -> str:
         (r'\qquad', '    '), (r'\quad', '  '),
         (r'\thinspace', ' '), (r'\medspace', ' '), (r'\thickspace', ' '),
         (r'\,', ' '), (r'\;', ' '), (r'\:', ' '), (r'\!', ''), (r'\ ', ' '),
-        # Skip spacing macros — handled later with individual regex
+        # Skip spacing macros - handled later with individual regex
         (r'\bigskip', '\n'), (r'\medskip', ' '), (r'\smallskip', ' '),
         # Table/structure commands that don't map to any visible character
         (r'\hline', ''), (r'\toprule', ''), (r'\midrule', ''), (r'\bottomrule', ''),
@@ -1024,22 +1024,22 @@ def prep_for_console(text: str) -> str:
     text = re.sub(r'\\tag\*?\{[^{}]*\}', '', text)         # \tag{*} \tag*{*}
     text = text.replace('\\notag', '').replace('\\nonumber', '')
     # ── Spacing / box macros: strip wrapper, PRESERVE content ───────────────────
-    text = re.sub(r'\\phantom\{([^{}]*)\}', '', text)      # invisible — drop entirely
+    text = re.sub(r'\\phantom\{([^{}]*)\}', '', text)      # invisible - drop entirely
     text = re.sub(r'\\vphantom\{([^{}]*)\}', '', text)     # invisible vertical
     text = re.sub(r'\\hphantom\{([^{}]*)\}', '', text)     # invisible horizontal
-    text = re.sub(r'\\smash\{([^{}]*)\}', r'\1', text)     # zero-height — keep content
-    # \vspace / \hspace — strip entirely (terminal doesn't do explicit spacing)
+    text = re.sub(r'\\smash\{([^{}]*)\}', r'\1', text)     # zero-height - keep content
+    # \vspace / \hspace - strip entirely (terminal doesn't do explicit spacing)
     text = re.sub(r'\\vspace\*?\{[^{}]*\}', '', text)
     text = re.sub(r'\\hspace\*?\{[^{}]*\}', ' ', text)     # hspace → single space
-    # \rule{width}{height} — strip (no way to draw a rule in terminal)
+    # \rule{width}{height} - strip (no way to draw a rule in terminal)
     text = re.sub(r'\\rule\{[^{}]*\}\{[^{}]*\}', '', text)
-    # \kern / \mkern — strip spacing adjustments (including negative: \kern -1em)
+    # \kern / \mkern - strip spacing adjustments (including negative: \kern -1em)
     text = re.sub(r'\\m?kern\s*-?\s*[\d.]*\s*(?:pt|em|ex|mu|cm|mm|in)?', '', text)
-    # \bm{x} bold math — strip wrapper, keep content (like \mathbf)
+    # \bm{x} bold math - strip wrapper, keep content (like \mathbf)
     text = re.sub(r'\\bm\{([^{}]*)\}', r'\1', text)
     # ── Structural / formatting no-ops: strip before _bare to prevent prefix eating ──
     # CRITICAL ORDER: \intertext before \int, \caption before \cap, etc.
-    # These produce NO output in terminal — content preserved where applicable.
+    # These produce NO output in terminal - content preserved where applicable.
     text = re.sub(r'\\intertext\{([^{}]*)\}',      r' \1 ', text)  # \intertext
     text = re.sub(r'\\shortintertext\{([^{}]*)\}', r' \1 ', text)  # \shortintertext
     # ── Color wrappers: strip color metadata, preserve content ─────────────────────
@@ -1083,7 +1083,7 @@ def prep_for_console(text: str) -> str:
     # ── 4. Degree symbol ───────────────────────────────────────────────────
     # Primary fix is in _PRE_LATEX_MACRO_FIXUPS (converts ^\circ → ° before
     # pylatexenc sees it).  The following catch the bare-text path and any
-    # leftovers (e.g., pylatexenc emits ∘ from \circ — catch that too).
+    # leftovers (e.g., pylatexenc emits ∘ from \circ - catch that too).
     text = re.sub(r'(\d+)\\degree', r'\1°', text)    # 30\degree → 30°
     text = re.sub(r'(\d*)[\^]\{?\\circ\}?', r'\1°', text)  # 30^\circ / ^\circ
     # After pylatexenc: \circ may already be ∘ (U+2218); convert ^∘ → °
@@ -1096,7 +1096,7 @@ def prep_for_console(text: str) -> str:
                   'A':'\u00c3','N':'\u00d1','O':'\u00d5'}
     _BAR_MAP   = {'a':'\u0101','e':'\u0113','i':'\u012b','o':'\u014d','u':'\u016b'}
     # ── Inner-first pass: process \vec/\dot/\ddot BEFORE \hat/\tilde/\bar ─────────
-    # Reason: \hat{\vec{x}} — \vec{x} regex can't match through nested braces,
+    # Reason: \hat{\vec{x}} - \vec{x} regex can't match through nested braces,
     # but \hat{ outer regex also fails (inner { breaks [^{}]+). Running \vec
     # first converts \vec{x}→x⃗, leaving \hat{x⃗} which \hat then catches.
     text = re.sub(r'\\vec\{([^{}]+)\}',
@@ -1137,7 +1137,7 @@ def prep_for_console(text: str) -> str:
 
     # ── 5. Bare Greek + operators ──────────────────────────────────
     _bare = {
-        # ── Greek lowercase — var-forms FIRST ───────────────────────
+        # ── Greek lowercase - var-forms FIRST ───────────────────────
         r'\varepsilon': '\u03b5',  r'\epsilon': '\u03b5',
         r'\vartheta':   '\u03d1',  r'\theta':   '\u03b8',
         r'\varpi':      '\u03d6',  r'\pi':      '\u03c0',
@@ -1157,12 +1157,12 @@ def prep_for_console(text: str) -> str:
         r'\Psi':   '\u03a8',  r'\Omega': '\u03a9',
         # ── Relations: longer/more-specific aliases FIRST ───────────
         # ORDERING: \leq BEFORE \le, \geq BEFORE \ge because \le is a
-        # prefix of \leq — if \le replaced first, \leq → ≤q (garbled).
+        # prefix of \leq - if \le replaced first, \leq → ≤q (garbled).
         r'\models':  '\u22a8',  # \models BEFORE \bmod/\mod (\mod is prefix of \models)
         r'\bmod':  ' mod ',
         r'\mod':   ' mod ',
         r'\degree':'°',
-        # \lesssim/\gtrsim BEFORE \leq/\le (\le is prefix of \lesssim — would eat 's')
+        # \lesssim/\gtrsim BEFORE \leq/\le (\le is prefix of \lesssim - would eat 's')
         r'\lesssim':  '\u2272',  r'\gtrsim':  '\u2273',
         r'\leq':   '\u2264',  r'\geq':   '\u2265',
         r'\le':    '\u2264',  r'\ge':    '\u2265',
@@ -1181,8 +1181,8 @@ def prep_for_console(text: str) -> str:
         r'\gg':       '\u226b',  r'\ll':       '\u226a',
         r'\propto':   '\u221d',
         r'\simeq':    '\u2243',  r'\sim':      '\u223c',
-        r'\cong':     '\u2245',  # ≅ — must follow \simeq/\sim (no prefix clash)
-        # ── Negated relations — MUST precede their positive counterparts ──────
+        r'\cong':     '\u2245',  # ≅ - must follow \simeq/\sim (no prefix clash)
+        # ── Negated relations - MUST precede their positive counterparts ──────
         # e.g. \nleq before \leq, \nless before \le, \ngeq before \geq/\ge
         r'\nless':    '\u226e',  r'\ngtr':    '\u226f',
         r'\nleq':     '\u2270',  r'\ngeq':    '\u2271',
@@ -1201,7 +1201,7 @@ def prep_for_console(text: str) -> str:
         r'\sqrt':   '\u221a',
         r'\cdots':  '\u22ef',  r'\ldots':   '\u2026',  r'\vdots': '\u22ee',
         r'\ddots':  '\u22f1',  r'\dots':    '\u2026',
-        # ── Long arrows — ALL before their short counterparts ───────────────
+        # ── Long arrows - ALL before their short counterparts ───────────────
         # \longrightarrow is a superset of \rightarrow as a raw string.
         # If \rightarrow ran first, \longrightarrow → \long→ (garbled).
         r'\Longleftrightarrow': '\u21d4',  # long double ⇔
@@ -1243,7 +1243,7 @@ def prep_for_console(text: str) -> str:
         r'\lceil':   '\u2308',  r'\rceil':   '\u2309',   # ⌈ ⌉ ceiling
         r'\lfloor':  '\u230a',  r'\rfloor':  '\u230b',   # ⌊ ⌋ floor
         # ── Colon forms ────────────────────────────────────────────────
-        r'\colon':   ':',  # f \colon X \to Y — function type notation
+        r'\colon':   ':',  # f \colon X \to Y - function type notation
         r'\mathbb{R}': '\u211d',  r'\mathbb{N}': '\u2115',
         r'\mathbb{Z}': '\u2124',  r'\mathbb{Q}': '\u211a',
         r'\mathbb{C}': '\u2102',  r'\mathbb{H}': '\u210d',
@@ -1290,7 +1290,7 @@ def prep_for_console(text: str) -> str:
 
     # ── 5-post. \mathbb catch-all (AFTER _bare so R→ℝ etc. fire first) ───────────
     # Anything remaining after _bare's specific entries is an unlisted field
-    # letter — fall back to stripping the wrapper (bare letter is readable).
+    # letter - fall back to stripping the wrapper (bare letter is readable).
     text = re.sub(r'\\mathbb\{([^{}]*)\}', r'\1', text)
 
     # ── 6. Bare superscripts/subscripts ────────────────────────────
@@ -1311,13 +1311,13 @@ def prep_for_console(text: str) -> str:
     # ── 6a. Compound fraction exponents (bare path, outside math blocks) ────
     text = re.sub(r'\^\{(\d+)/(\d+)\}', _fmt_frac_exp, text)
 
-    # ── 6a2. Prime superscripts — BEFORE general ^{...} ─────────────────────
+    # ── 6a2. Prime superscripts - BEFORE general ^{...} ─────────────────────
     # f^{\prime\prime\prime} → f‴, f^{\prime\prime} → f″, f^{\prime} → f′
     # Also handle the common apostrophe-style f'' → f″ etc.
     text = re.sub(r"\^\{(?:\\prime){3}\}", "\u2034", text)   # ‴ triple prime (raw)
     text = re.sub(r"\^\{(?:\\prime){2}\}", "\u2033", text)   # ″ double prime (raw)
     text = re.sub(r"\^\{\\prime\}",        "\u2032", text)   # ′ single prime (raw)
-    # Also match already-converted form — _bare converts \prime → ′ BEFORE us,
+    # Also match already-converted form - _bare converts \prime → ′ BEFORE us,
     # so ^{\prime\prime} → ^{′′} by the time this section runs.
     text = re.sub(r"\^\{[\u2032]{3}\}", "\u2034", text)      # ‴ triple prime (already converted)
     text = re.sub(r"\^\{[\u2032]{2}\}", "\u2033", text)      # ″ double prime (already converted)
@@ -1357,7 +1357,7 @@ def prep_for_console(text: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def print_smart_response(text: str):
-    """Print response — syntax-highlighted code blocks, markdown for prose with LaTeX rendering."""
+    """Print response - syntax-highlighted code blocks, markdown for prose with LaTeX rendering."""
     try:
         parts = re.split(r"(```[\s\S]*?```)", text)
         for part in parts:

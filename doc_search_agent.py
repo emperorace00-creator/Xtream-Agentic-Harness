@@ -63,7 +63,7 @@ def _chunk_text(text: str) -> list:
     """
     text = text.replace("\r\n", "\n").replace("\r", "\n")
 
-    # Build (stripped_para, char_offset) pairs in ONE pass — offsets always
+    # Build (stripped_para, char_offset) pairs in ONE pass - offsets always
     # match the actual text, no strip/filter desync possible.
     # Adjust `pos` by leading whitespace stripped by `.strip()` so char offsets
     # point at the actual first character.
@@ -97,7 +97,7 @@ def _chunk_text(text: str) -> list:
 
             # ── Seed next window with overlap ─────────────────────────────────
             # Walk backwards through window paras until we have >= CHUNK_OVERLAP
-            # chars — use whole paragraphs so overlap text is always clean prose.
+            # chars - use whole paragraphs so overlap text is always clean prose.
             overlap_len       = 0
             overlap_start_idx = len(window)
             for i in range(len(window) - 1, -1, -1):
@@ -171,7 +171,7 @@ class DocSearchAgent:
             source_hash: MD5 of the source PDF's bytes (if known). Stored as a
                          top-level field in .chunks.json so a later ingest_pdf
                          call can detect unchanged content and skip re-OCR'ing.
-                         Never read by search() — purely a re-ingest guard.
+                         Never read by search() - purely a re-ingest guard.
 
         Returns:
             {"success": bool, "chunks": int, "chunks_path": str} or {"success": False, "error": str}
@@ -193,13 +193,13 @@ class DocSearchAgent:
             return {"success": False, "error": "File is empty — nothing to embed."}
 
         # Bug #21 fix: if the 'text' is actually an OCR error string rather
-        # than real document content, don't embed it — the error would become
+        # than real document content, don't embed it - the error would become
         # a searchable chunk that matches future doc_search queries falsely.
         if text.strip().startswith("[OCR ERROR"):
             return {"success": False, "error": f"OCR failed for this document — not embedded: {text[:120]}"}
 
         # Bug #21 fix: if the 'text' is actually an OCR error string rather
-        # than real document content, don't embed it — the error would become
+        # than real document content, don't embed it - the error would become
         # a searchable chunk that matches future doc_search queries falsely.
         if text.strip().startswith("[OCR ERROR"):
             return {"success": False, "error": f"OCR failed for this document — not embedded: {text[:120]}"}
@@ -232,7 +232,7 @@ class DocSearchAgent:
                 "embedding":  emb,
             })
 
-        # Bug #20 fix: if any chunk failed to embed, abort — don't write
+        # Bug #20 fix: if any chunk failed to embed, abort - don't write
         # source_hash to the sidecar. A partial index would block future re-ingest
         # attempts (the hash-match skip guard says "already indexed") while silently
         # returning fewer results than the document actually has.
@@ -293,7 +293,7 @@ class DocSearchAgent:
                 "Ingest a PDF first: <ingest_pdf>your_file.pdf</ingest_pdf>"
             )
 
-        # Load all chunks — using mtime-keyed cache to avoid full JSON parse
+        # Load all chunks - using mtime-keyed cache to avoid full JSON parse
         # on every query. Re-reads only chunks files that changed since last load.
         all_chunks = []
         for cf in chunks_files:
@@ -301,10 +301,10 @@ class DocSearchAgent:
                 mtime = os.path.getmtime(cf)
                 cached = self._chunks_cache.get(cf)
                 if cached and cached[0] == mtime:
-                    # Cache hit — no disk I/O needed
+                    # Cache hit - no disk I/O needed
                     all_chunks.extend(cached[1])
                 else:
-                    # Cache miss — read from disk and cache
+                    # Cache miss - read from disk and cache
                     with open(cf, "r", encoding="utf-8") as f:
                         data = json.load(f)
                     chunks = data.get("chunks", [])
@@ -316,14 +316,14 @@ class DocSearchAgent:
         if not all_chunks:
             return "[SYSTEM: DOC SEARCH] Chunks files exist but contain no data."
 
-        # Embed query (query mode — different projection from passage)
+        # Embed query (query mode - different projection from passage)
         try:
             query_emb = _embed([query], input_type="query")[0]
         except Exception as e:
             return f"[SYSTEM: DOC SEARCH ERROR] Failed to embed query: {e}"
 
         # Score all chunks
-        # Guard against partial writes or schema mismatches —
+        # Guard against partial writes or schema mismatches -
         # skip any chunk that is missing its embedding vector.
         valid_chunks = [c for c in all_chunks if c.get("embedding")]
         if not valid_chunks:
@@ -361,7 +361,7 @@ class DocSearchAgent:
             e_line = chunk.get("end_line", "?")
             text   = chunk.get("text", "").strip()
 
-            # Show full chunk text — at 3200 chars (~800 tokens) each chunk is
+            # Show full chunk text - at 3200 chars (~800 tokens) each chunk is
             # self-contained and the model needs the full content to answer correctly.
             # 5 results * ~800 tokens = ~4000 tokens, well within context budget.
 
@@ -389,7 +389,7 @@ class DocSearchAgent:
                 if fn.endswith(CHUNKS_SUFFIX):
                     chunks_path = os.path.join(root, fn)
 
-                    # Bug 1: don't guess the source extension as ".txt" — that
+                    # Bug 1: don't guess the source extension as ".txt" - that
                     # breaks for .md files ingested via ingest_text (they keep
                     # their original extension, e.g. "notes.md"), causing this
                     # cleanup to delete valid, still-referenced chunks files.
@@ -405,7 +405,7 @@ class DocSearchAgent:
                             source_path = os.path.join(self.scratch_dir, source_rel)
                             source_exists = os.path.exists(source_path)
                         else:
-                            # Older chunks file predating the "source" field —
+                            # Older chunks file predating the "source" field -
                             # fall back to the legacy .txt guess, but only as
                             # a last resort, and never delete just because the
                             # field happens to be missing.
@@ -422,7 +422,7 @@ class DocSearchAgent:
                         except Exception as e:
                             console.print(f"[yellow]⚠️  Failed to delete orphaned chunks {chunks_path}: {e}[/yellow]")
                     else:
-                        # source_exists is True, or None (unknown/legacy) — keep it.
+                        # source_exists is True, or None (unknown/legacy) - keep it.
                         found.append(chunks_path)
         return found
 
@@ -446,7 +446,7 @@ class PDFIngestAgent:
              OCR runs on the single enhanced image per page.
       3. Results are concatenated in page order and saved as <name>.txt in scratch
 
-    Reuses the existing ImageOCRAgent — no new API calls, no new models.
+    Reuses the existing ImageOCRAgent - no new API calls, no new models.
     All NIM tier fallback logic is inherited.
     """
 
@@ -475,7 +475,7 @@ class PDFIngestAgent:
         console.print(f"\n📄 [cyan]PDF ingest: {Path(pdf_path).name}[/cyan]")
 
         # ── Step 0: MD5 skip guard ───────────────────────────────────────────────
-        # The model explicitly controls when ingest_pdf is called — this does NOT
+        # The model explicitly controls when ingest_pdf is called - this does NOT
         # auto re-ingest on content change. It only saves a wasted 2+ minute OCR
         # run when the model calls ingest_pdf again on a file whose bytes are
         # identical to what's already ingested. If content differs (same
@@ -514,7 +514,7 @@ class PDFIngestAgent:
                     )
                     # fall through to a fresh ingest below
             except Exception:
-                pass  # Corrupt/partial chunks file — fall through to a fresh ingest
+                pass  # Corrupt/partial chunks file - fall through to a fresh ingest
 
         # ── Step 1: open PDF ─────────────────────────────────────────────────────
         try:
@@ -540,7 +540,7 @@ class PDFIngestAgent:
         # into a bounded queue as each page completes.
         #
         # Consumer (main thread): reads from the queue as pages arrive and submits
-        # each one to the OCR thread pool immediately — OCR of page N overlaps
+        # each one to the OCR thread pool immediately - OCR of page N overlaps
         # with rendering of pages N+1, N+2, ...
         #
         # The AIMD gate inside ImageOCRAgent controls actual API concurrency;
@@ -561,7 +561,7 @@ class PDFIngestAgent:
                 for i, page in enumerate(doc):
                     if cancel_event.is_set():  # Bug 21: bail early if consumer failed
                         break
-                    # 200 DPI: ~78% more pixels than 150 DPI — better for dense
+                    # 200 DPI: ~78% more pixels than 150 DPI - better for dense
                     # math, small subscripts, and tables.
                     mat  = fitz.Matrix(200 / 72, 200 / 72)
                     pix  = page.get_pixmap(matrix=mat)
@@ -596,7 +596,7 @@ class PDFIngestAgent:
         ocr_futures     = {}
         # Partial 1 fix: accumulate exact master/overview/tile paths written
         # during page prep, so _cleanup() can delete them directly instead of
-        # glob-guessing by PDF stem (which never matches — see _cleanup docstring).
+        # glob-guessing by PDF stem (which never matches - see _cleanup docstring).
         written_image_files = []
 
         try:
@@ -622,7 +622,7 @@ class PDFIngestAgent:
                     if getattr(config, "IMAGE_TILING", False):
                         # Tiling: all tiles (overview + crops) go to the model in
                         # ONE API call so it sees full context + zoomed detail at once
-                        # and returns ONE unified transcription — mirrors vision path.
+                        # and returns ONE unified transcription - mirrors vision path.
                         fut = ocr_pool.submit(self.ocr.process_image_group, ocr_input)
                     else:
                         fut = ocr_pool.submit(self.ocr.process_images, ocr_input)
@@ -675,7 +675,7 @@ class PDFIngestAgent:
             # Bug 4: on total OCR failure (every page returned None or blank),
             # full_text is "". Previously this still wrote an empty .txt,
             # let chunk_and_embed fail silently (warning only), and returned
-            # success=True regardless — reporting the PDF as ingested when
+            # success=True regardless - reporting the PDF as ingested when
             # nothing was actually captured. Fail explicitly instead, before
             # writing anything to disk or attempting to embed.
             if not full_text.strip():
@@ -732,7 +732,7 @@ class PDFIngestAgent:
             "chars":       len(full_text),
             "chunks":      embed_result.get("chunks", 0),
             # Bug 4 (second layer): text extraction succeeding is not the same
-            # as the file being searchable via doc_search — surface embedding
+            # as the file being searchable via doc_search - surface embedding
             # status separately instead of implying doc_search always works
             # whenever "success" is True.
             "embedded":    embed_result.get("success", False),
@@ -771,7 +771,7 @@ class PDFIngestAgent:
                 tile_dicts  = _slice_master_into_tiles(master_path, stem)
                 if tile_dicts:
                     # Tiles are already written to config.SCRATCH_DIR by
-                    # _slice_master_into_tiles — reconstruct their file paths.
+                    # _slice_master_into_tiles - reconstruct their file paths.
                     tile_paths = [
                         os.path.join(config.SCRATCH_DIR, d["filename"])
                         for d in tile_dicts
@@ -802,7 +802,7 @@ class PDFIngestAgent:
                 if extra_files is not None:
                     extra_files.append(enhanced_path)
                     # _copy_and_enhance() also writes a raw, un-enhanced copy
-                    # to SCRATCH_DIR/<filename> before enhancing it — that
+                    # to SCRATCH_DIR/<filename> before enhancing it - that
                     # raw copy would otherwise leak the same way the
                     # enhanced copy did. Track it too.
                     raw_scratch_copy = os.path.join(config.SCRATCH_DIR, filename)
@@ -820,9 +820,9 @@ class PDFIngestAgent:
     def _cleanup(self, tmp_dir: str, stem: str = None, extra_files: list = None):
         """Remove temp image folder after OCR.
         If stem is provided, also glob-sweeps for tile/overview/master images
-        (legacy/secondary mechanism — see Partial 1 note below).
+        (legacy/secondary mechanism - see Partial 1 note below).
         If extra_files is provided (list of exact paths written during this
-        ingest, from _prepare_page_images), those are removed directly — this
+        ingest, from _prepare_page_images), those are removed directly - this
         is the primary, reliable cleanup mechanism (Partial 1 fix)."""
         try:
             robust_rmtree(tmp_dir)
@@ -832,7 +832,7 @@ class PDFIngestAgent:
         # Partial 1 fix: delete exactly the files we know we wrote. Tile/
         # master/overview filenames are built from the *page* stem
         # ("page_0001"), never the PDF stem ("textbook"), so the glob sweep
-        # below can never match them — exact-path tracking is what actually
+        # below can never match them - exact-path tracking is what actually
         # prevents the leak.
         if extra_files:
             for _f in extra_files:
@@ -842,7 +842,7 @@ class PDFIngestAgent:
                 except Exception:
                     pass
 
-        # Bug 2: secondary glob sweep — harmless, catches any stragglers left
+        # Bug 2: secondary glob sweep - harmless, catches any stragglers left
         # over from ingests that ran before the extra_files tracking existed.
         # Kept as a best-effort safety net, not the primary mechanism.
         if stem:

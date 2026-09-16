@@ -16,7 +16,7 @@ import config
 CACHE_FILE = config.WEB_CACHE_FILE
 CACHE_TTL  = 24 * 60 * 60 * 30   # 30 days
 
-# item 16 / SP-17: throttled autosave interval — the cache is otherwise only
+# item 16 / SP-17: throttled autosave interval - the cache is otherwise only
 # flushed at process exit, so this protects against losing a long session's
 # cache if the process dies without a clean exit (kill -9, crash, etc).
 CACHE_AUTOSAVE_INTERVAL = 300  # seconds
@@ -68,7 +68,7 @@ class ContentExtractor:
             return []
 
     def _calc_priority(self, header: str, content: str) -> int:
-        """Calculate section relevance priority — general-purpose, no topic bias."""
+        """Calculate section relevance priority - general-purpose, no topic bias."""
         priority = 5
 
         # Penalise boilerplate / navigation sections that add no substance
@@ -315,7 +315,7 @@ class WebAgent:
     def _rerank_snippets(self, query: str, snippets: list) -> list:
         """
         Re-order snippets by relevance to query using NVIDIA NIM cross-encoder.
-        Falls back to original order on any error — non-fatal.
+        Falls back to original order on any error - non-fatal.
         """
         order = rerank_passages(query, snippets, api_key=self._nvidia_key, label="snippets")
         return [snippets[i] for i in order]
@@ -350,7 +350,7 @@ class WebAgent:
             self._save_cache()
 
     def flush_cache(self):
-        """Final safety-net save, registered with atexit — ensures a clean
+        """Final safety-net save, registered with atexit - ensures a clean
         process exit never drops cache entries written since the last
         throttled autosave."""
         if self._cache_dirty:
@@ -402,7 +402,7 @@ class WebAgent:
             query:     search query.
             from_date: optional ISO date string ('YYYY-MM-DD'). When set,
                        Linkup restricts results to content published on or
-                       after this date — useful when the model knows
+                       after this date - useful when the model knows
                        recency matters (e.g. "current" notifications, specs,
                        policies) and wants to filter out stale SEO content
                        that would otherwise conflict with fresher sources.
@@ -466,7 +466,7 @@ class WebAgent:
         if len(final) > 21000:
             final = final[:21000] + "\n\n[SYSTEM: TRUNCATED — result exceeded 21,000 chars]"
 
-        # Bug #32 fix: don't cache empty results — a 30-day TTL on an empty
+        # Bug #32 fix: don't cache empty results - a 30-day TTL on an empty
         # string would lock in zero results for a month for the same query.
         if final:
             self.cache[cache_key] = {"timestamp": time.time(), "content": final}
@@ -476,7 +476,7 @@ class WebAgent:
 
     def read_url(self, url: str, query_context: str = None, max_tokens: int = 6000) -> str:
         """Read a URL and intelligently extract the most relevant content."""
-        # Bug 8: guard against missing API key — avoids sending "Bearer None"
+        # Bug 8: guard against missing API key - avoids sending "Bearer None"
         # which causes an HTTP 401 crash instead of a graceful error message.
         if not self.api_key:
             return ("[SYSTEM: url_search unavailable — Linkup API key not configured. "
@@ -518,7 +518,7 @@ class WebAgent:
 
         final = f"[SOURCE: {url}]\n\n{final}"
 
-        # Bug #32 fix: same guard for URL cache — don't cache empty page extractions.
+        # Bug #32 fix: same guard for URL cache - don't cache empty page extractions.
         if final:
             self.cache[cache_key] = {"timestamp": time.time(), "content": final}
             self._mark_cache_dirty()
@@ -529,13 +529,13 @@ class WebAgent:
         """Heuristic: is this URL a technical documentation page?
 
         Only returns True when there is strong evidence of a code/API docs page.
-        Deliberately conservative — false negatives (missing a docs page) are
+        Deliberately conservative - false negatives (missing a docs page) are
         far less harmful than false positives (routing physics/math/news content
         through format_for_developer, which buries prose behind CODE EXAMPLES).
 
         Checks (in order of reliability):
-          1. URL path contains a recognised docs keyword  — very reliable
-          2. Page contains ≥4 fenced code-block markers   — requires real density,
+          1. URL path contains a recognised docs keyword  - very reliable
+          2. Page contains ≥4 fenced code-block markers   - requires real density,
              not just a single snippet or the word 'import'
         """
         url_lower = url.lower()
@@ -552,7 +552,7 @@ class WebAgent:
             return True
 
         # Content-based: require genuine code density (≥2 complete fenced blocks).
-        # A single ``` or the word 'import'/'API' appears in ordinary articles —
+        # A single ``` or the word 'import'/'API' appears in ordinary articles -
         # we need multiple full blocks to be confident this is a code reference page.
         code_fence_count = len(re.findall(r'```', content[:8000]))
         if code_fence_count >= 4:   # ≥2 complete blocks → open+close pairs

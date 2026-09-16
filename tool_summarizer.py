@@ -1,10 +1,10 @@
 # tool_summarizer.py - Deterministic tool call summarizer for compact history storage
 """
 Converts raw tool call chains into compact, human-readable audit summaries.
-No LLM needed — tool calls are structured data, not natural language.
+No LLM needed - tool calls are structured data, not natural language.
 
 Example output stored in history:
-  [POWERS USED — 3 call(s)]
+  [POWERS USED - 3 call(s)]
   1. bash(python start.py) → ✓ exit 0
   2. str_replace(api/start.py) → ✓ (3 lines → 7 lines)
   3. doc_search('photosynthesis') → 4 passage(s) found
@@ -19,7 +19,7 @@ class ToolCallSummarizer:
     """
     Deterministically summarize tool call chains for compact history storage.
 
-    Design principle: extract only what the model needs to remember across sessions —
+    Design principle: extract only what the model needs to remember across sessions -
     WHAT was done and WHETHER it succeeded. Not the full content.
     """
 
@@ -109,7 +109,7 @@ class ToolCallSummarizer:
         success = '"success": true' in result.lower() or '"success":true' in result.lower()
         icon = "✓" if success else "✗"
 
-        # Only attempt the line-count detail on success — a failure dict has
+        # Only attempt the line-count detail on success - a failure dict has
         # no "changes" key, so this used to fall back to "?" for both counts
         # and print "(? lines -> ? lines)" as if a real edit had happened.
         detail = ""
@@ -161,7 +161,7 @@ class ToolCallSummarizer:
             or result.startswith("Semantic search is disabled")
             # CodeSearchAgent.search()'s genuine-miss path (empty/filtered-out
             # workspace) shares the same "[SYSTEM: CODE SEARCH: '...']" prefix
-            # as a real hit, so it can't be told apart by prefix alone — match
+            # as a real hit, so it can't be told apart by prefix alone - match
             # on the fixed phrase that only appears in the miss message.
             or "no indexed code chunks available" in result
         )
@@ -180,7 +180,7 @@ class ToolCallSummarizer:
         return f"doc_search('{query}') → {n_chunks} passage(s) found"
 
     def _bash(self, args: dict, result: str) -> str:
-        # bash handler returns a plain string: "[exit 0]\nstdout..." — never JSON.
+        # bash handler returns a plain string: "[exit 0]\nstdout..." - never JSON.
         cmd = str(args.get("command", "")).strip()
         short_cmd = cmd[:60] + ("…" if len(cmd) > 60 else "")
         icon = "✓" if result.startswith("[exit 0]") else "✗"
@@ -222,7 +222,7 @@ class ToolCallSummarizer:
         return f"ingest_pdf({filename}) → {icon}{detail}"
 
     def _ingest_chat(self, args: dict, result: str) -> str:
-        """Summarise ingest_chat call — success/skip both count as done."""
+        """Summarise ingest_chat call - success/skip both count as done."""
         filename = str(args.get("filename") or args.get("query", "?")).strip()
         stripped = result.strip()
         skipped = stripped.startswith("⚡ [ingest_chat]") and "already imported" in stripped

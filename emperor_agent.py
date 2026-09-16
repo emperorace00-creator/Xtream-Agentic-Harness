@@ -105,7 +105,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
                     with open(config.GOOGLE_API_KEY_FILE_POOL, "r", encoding="utf-8") as _f:
                         _pool_keys = [ln.strip() for ln in _f if ln.strip()]
                 except FileNotFoundError:
-                    pass  # pool file missing — fall through to single-key fallback
+                    pass  # pool file missing - fall through to single-key fallback
                 except Exception as _e:
                     console.print(f"⚠️  [yellow]Could not read Google key pool: {_e}[/yellow]")
 
@@ -168,7 +168,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             self.search_history_agent = SearchHistoryAgent()
             self.summarizer = ToolCallSummarizer()
             self.last_tool_summary = ""  # populated after each agentic turn
-            # Bug 14: separate field for cancelled/rolled-back turns — never
+            # Bug 14: separate field for cancelled/rolled-back turns - never
             # conflated with last_tool_summary, which must only reflect
             # committed turns (see _save_partial_history / generate_with_history).
             self.last_cancelled_summary = ""
@@ -185,7 +185,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             # new non-resume turn. Used by start.py to build partial history on cancel.
             self._current_tool_call_log = []
 
-            # Alien-format detection — classifier loaded lazily on first use.
+            # Alien-format detection - classifier loaded lazily on first use.
             # _alien_nudge_sent prevents re-triggering after a nudge is injected.
             self._alien_detector = None
             self._alien_nudge_sent: bool = False
@@ -206,7 +206,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             # All thinking/reasoning traces from the most recent main turn.
             # Collected per-iteration in _generate_with_tools; read by
             # generate_review for the second-pass trace-informed review.
-            # Transient — session memory only, never saved to chat_history.
+            # Transient - session memory only, never saved to chat_history.
             self.last_think_trace: str = ""
 
             # Controls whether workspace + uploads context is injected into
@@ -233,7 +233,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
                 raise AssertionError(_msg)
 
             # /tool toggles groups. Defaults to web + bash on startup.
-            # bash is only included if Docker is confirmed available — same guard
+            # bash is only included if Docker is confirmed available - same guard
             # the /tool dialog applies. start.py passes docker_available after
             # _setup_sandbox() runs; falls back to web-only if not provided.
             _default_groups = {"web", "bash"} if docker_available else {"web"}
@@ -295,7 +295,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         if self._active_groups:
             prompt += "\n\n" + PSEUDO_TOOL_FORMAT
             # search_history (HISTORY_TOOLS_PROMPT) is baked only into
-            # GROUP_PROMPTS["files"], matching GROUP_TOOLS["files"] — the tool
+            # GROUP_PROMPTS["files"], matching GROUP_TOOLS["files"] - the tool
             # is advertised, and executable, only when 'files' is active.
             # Bug #52 fix: track whether the date block has already been
             # injected so 'web' + 'research' active together don't produce
@@ -306,7 +306,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
                     continue
                 prompt += "\n\n" + GROUP_PROMPTS[group]
                 if group in ("web", "research") and not _date_injected:
-                    # Computed fresh every call (not cached) — a long-running
+                    # Computed fresh every call (not cached) - a long-running
                     # session needs today's actual date, not the date the
                     # process started. Only injected when 'web' or 'research'
                     # is active; injected at most once per call.
@@ -339,7 +339,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         """
         Lazily create the rollback backup of scratch/ (item 4 / SP-1).
 
-        Triggered from _call_tool() on the FIRST tool call of a turn — not
+        Triggered from _call_tool() on the FIRST tool call of a turn - not
         eagerly at turn entry. Most tool-mode turns never modify a file (e.g.
         a pure web search or a read-only view_lines), so this often avoids
         the copytree entirely. Runs on a daemon background thread so it never
@@ -356,7 +356,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
 
             def _ignore(dirpath, names):
                 # Skip the same heavy/ephemeral dirs the turn-archive zip
-                # excludes (turn_state_manager.py's _zip_scratch) — this backup
+                # excludes (turn_state_manager.py's _zip_scratch) - this backup
                 # exists purely for Ctrl+C rollback of model-made edits, not to
                 # snapshot node_modules/venv/.git, which don't need reverting.
                 ignored = set()
@@ -456,10 +456,10 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             config.THINKING_TYPE    = config.LOCAL_THINKING_TYPE
             config.SUPPORTS_VISION  = config.LOCAL_VISION
 
-            # Turn-1 cache warm-up only — fires once here at switch time, not
+            # Turn-1 cache warm-up only - fires once here at switch time, not
             # on every turn. Runs on a background thread so /local returns to
             # the prompt immediately instead of blocking on prefill. Harmless
-            # no-op if llama-server isn't running yet — the real request will
+            # no-op if llama-server isn't running yet - the real request will
             # just surface a clear connection error when the user sends one.
             threading.Thread(
                 target=self.warm_local_system_prompt,
@@ -516,7 +516,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         )
 
     # ══════════════════════════════════════════════════════════════════════════
-    # GENERATION — STATEFUL (main entry point from start.py)
+    # GENERATION - STATEFUL (main entry point from start.py)
     # ══════════════════════════════════════════════════════════════════════════
 
 
@@ -544,7 +544,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         console.print(f"\n[cyan] ✦ [/cyan][dim]{config.ACTIVE_BACKEND} ({config.THINKING_TYPE} thinking)...[/dim]")
 
         if self._active_groups:
-            # Start reconcile in background immediately — before history slicing
+            # Start reconcile in background immediately - before history slicing
             # or message assembly, so those operations overlap with the I/O.
             # We join (wait) only right before the workspace summary is needed.
             _reconcile_thread = threading.Thread(
@@ -575,7 +575,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
                 f"[LAST TURN ACTIONS]\n{_prior_tool_summary}\n\n"
                 if _prior_tool_summary else ""
             )
-            # Bug 14: distinctly-labelled — these actions were attempted then
+            # Bug 14: distinctly-labelled - these actions were attempted then
             # rolled back, not committed. Kept separate from `prior` above so
             # the model still benefits from knowing what was already tried
             # (e.g. to avoid repeating a failing approach) without being told
@@ -605,7 +605,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             context_block = ""
 
 
-        # Build user message — multimodal when vision is supported and images provided,
+        # Build user message - multimodal when vision is supported and images provided,
         # plain string otherwise (images were pre-processed to OCR text by start.py).
         if images and config.SUPPORTS_VISION:
             content = [{"type": "text", "text": context_block + prompt}]
@@ -650,7 +650,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         """
         # ── State preservation ──────────────────────────────────────────────
         # Read (don't consume) the prior-turn summaries so the reviewer sees
-        # the same [LAST TURN ACTIONS] context a real turn would see — but
+        # the same [LAST TURN ACTIONS] context a real turn would see - but
         # we restore them afterward so the next real turn still gets them.
         _saved_tool_summary      = self.last_tool_summary
         _saved_cancelled_summary = self.last_cancelled_summary
@@ -688,7 +688,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
                 if msg["role"] in ("user", "assistant"):
                     messages.append(msg)
 
-            # ── Context block — identical to generate_with_history ──────────
+            # ── Context block - identical to generate_with_history ──────────
             if self._active_groups:
                 uploads_summary = self._scan_uploads_folder(pdf_active="pdf" in self._active_groups)
                 _reconcile_thread.join(timeout=2.0)
@@ -729,44 +729,11 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
                 user_query=review_prompt,
             )
 
-            # ── Pass 2: trace-informed follow-up ─────────────────────────────
-            # Feed the main model's reasoning trace back so the reviewer can
-            # spot things it explored in thinking but dropped from the answer —
-            # omissions that are invisible from the final response alone.
-            if _saved_trace:
-                # Pass 1 final text isn't printed by _generate_with_tools — cmd_review
-                # would normally handle it, but we're returning Pass 2 instead.
-                # Print Pass 1 here so the user sees both responses.
-                console.print()
-                console.rule(style=RULE_STYLE)
-                print_smart_response(pass1_response)
-                console.rule(style=RULE_STYLE)
-                console.print()
-
-                console.rule("reviewing with reasoning trace", style="dim cyan")
-                _pass2_prompt = (
-                    "[SYSTEM: Here is the internal reasoning the model went through before "
-                    "writing that response \u2014 thinking before and after each power use.]\n\n"
-                    f"[POWERS USED]\n{_saved_tool_summary or 'None'}\n\n"
-                    f"[REASONING TRACE]\n{_saved_trace}\n\n"
-                    "---\n\n"
-                    "Review the response. Use the reasoning trace above to catch things "
-                    "invisible from the final answer alone: something the model explored in "
-                    "thinking but dropped, or a wrong early commitment it couldn't recover from."
-                )
-                # Fresh call — replace the pass-1 user message rather than
-                # appending a continuation, so pass 2 has no memory of pass 1.
-                messages2 = messages[:-1] + [{"role": "user", "content": context_block + _pass2_prompt}]
-                return self._generate_with_tools(
-                    messages2, web_agent,
-                    config.EMPEROR_REVIEW_TEMP, token_counter,
-                    user_query=_pass2_prompt,
-                )
             return pass1_response
 
         finally:
             # ── State restoration ───────────────────────────────────────────
-            # Always runs — success, cancellation (Ctrl+C), or error.
+            # Always runs - success, cancellation (Ctrl+C), or error.
             self.last_tool_summary      = _saved_tool_summary
             self.last_cancelled_summary = _saved_cancelled_summary
             self._backup_created        = _saved_backup_created
@@ -794,7 +761,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         message crashes, then re-enters the tool loop from that exact point.
 
         Key differences from calling generate_with_history() again:
-          - Does NOT rebuild messages from chat history — keeps all tool calls
+          - Does NOT rebuild messages from chat history - keeps all tool calls
             that already executed this turn.
           - Falls back to generate_with_history() if _partial_messages is None
             (e.g. interrupt happened before the first API call).
@@ -807,7 +774,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
                 feature existed.
         """
         if not self._partial_messages:
-            # Interrupted before the first tool call — nothing to resume from.
+            # Interrupted before the first tool call - nothing to resume from.
             # Treat as a fresh turn with the guidance as the prompt.
             console.print("[dim]No mid-turn state to resume — starting fresh.[/dim]")
             return self.generate_with_history(guidance, web_agent, token_counter=token_counter)
@@ -859,7 +826,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
     # arbitrary XML in user files never gets misidentified as a tool call.
     def _get_active_known_tools(self) -> set:
         """Return active tool names by unioning all active group tool-sets.
-        Empty set when no group is active — stale history tags never execute."""
+        Empty set when no group is active - stale history tags never execute."""
         if not self._active_groups:
             return set()
         active = set()
@@ -942,7 +909,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         The mapping of tool → primary param key lives here so handlers stay
         untouched (they all do args.get("key")).
         """
-        # Tools that carry named child elements — list every child tag expected
+        # Tools that carry named child elements - list every child tag expected
         STRUCTURED = {
             "str_replace":   ["file", "old_str", "new_str", "count"],
             "view_lines":    ["file", "start", "end", "context"],
@@ -986,7 +953,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         if tool_name in SIMPLE_PARAM:
             return {SIMPLE_PARAM[tool_name]: inner.strip()}
 
-        # Generic fallback — inner text → "query"
+        # Generic fallback - inner text → "query"
         stripped = inner.strip()
         return {"query": stripped} if stripped else {}
 
@@ -1014,7 +981,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             r'<\|tool_call_begin\|>\s*functions\.([\w]+)(?::[\d]+)?\s*<\|tool_call_argument_begin\|>\s*(.*?)\s*<\|tool_call_end\|>',
             content, re.DOTALL
         ):
-            # Kimi's function names already match our pseudo-tool names 1:1 —
+            # Kimi's function names already match our pseudo-tool names 1:1 -
             # no mapping needed, just filter against known tools below.
             fn_name  = m.group(1)
             arg_text = m.group(2).strip()
@@ -1046,7 +1013,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         # Already loaded successfully
         if self._alien_detector is not None:
             return self._alien_detector
-        # Previous load attempt failed — don't retry every call
+        # Previous load attempt failed - don't retry every call
         if getattr(self, "_alien_detector_failed", False):
             return None
         model_path = os.path.join(os.path.dirname(__file__), "alien_format_clf.joblib")
@@ -1057,7 +1024,6 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         try:
             from train_alien_format_classifier import AlienFormatDetector
             self._alien_detector = AlienFormatDetector.load(model_path)
-            console.print("[dim]✓ Alien format detector loaded[/dim]")
         except Exception as e:
             console.print(f"[yellow]⚠️  Alien detector load failed: {e}[/yellow]")
             self._alien_detector_failed = True
@@ -1075,7 +1041,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         """
         tool_call_count = 0
         # Accumulates narrative text (model prose alongside tool calls) so the
-        # full turn — explanation + tools + final answer — is preserved in
+        # full turn - explanation + tools + final answer - is preserved in
         # permanent history. Stored on self so start.py can read it after the
         # turn ends without re-printing it (which would cause double output).
         # Reset here for new turns; preserved across resume to keep pre-interrupt
@@ -1118,7 +1084,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
 
 
             # ── Parse pseudo-tool tags from model output ───────────────────
-            # Scan clean_content ONLY — the model's actual visible answer,
+            # Scan clean_content ONLY - the model's actual visible answer,
             # not its thinking/reasoning text. Tags inside <think> blocks or
             # a native reasoning field are NOT executed.
             #
@@ -1128,13 +1094,13 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             # it in the visible answer. In practice this backfired: a
             # regex tag-scanner can't tell "I am calling this tool" apart
             # from "here's an example of what that tool call looks like" or
-            # "I should have called X" inside natural-language reasoning —
+            # "I should have called X" inside natural-language reasoning -
             # all three produce identical-looking tags. The result was
             # illustrative/hypothetical tags in reasoning getting silently
             # executed as real actions (including against mutating tools
             # like str_replace/bash, not just read-only ones). Requiring the
             # tag to appear in the visible answer is the standard contract
-            # anyway — PSEUDO_TOOL_FORMAT tells the model to write tags "in
+            # anyway - PSEUDO_TOOL_FORMAT tells the model to write tags "in
             # your response," meaning the answer it gives you, not private
             # scratch reasoning.
             pseudo_calls = self._parse_pseudo_tools(clean_content or raw_content or "")
@@ -1143,7 +1109,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             # Kimi also emits its own native <|tool_call_begin|> format in
             # the content field alongside (or instead of) our XML tags.
             # Parse and merge those so nothing gets missed. Scans
-            # clean_content for the same reason as above — a native-format
+            # clean_content for the same reason as above - a native-format
             # tag inside reasoning is just as executable-by-accident as an
             # XML one would be. Both parsers now share clean_content's
             # coordinate space, so no offset is needed to keep positions
@@ -1151,7 +1117,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             if config.THINKING_TYPE == "native":
                 native_calls = self._parse_kimi_native_tools(clean_content or raw_content or "")
                 if native_calls:
-                    # Merge — avoid duplicating calls already found via XML.
+                    # Merge - avoid duplicating calls already found via XML.
                     # Use json.dumps with sort_keys=True for the dedup key instead of str(args),
                     # because dict stringification is sensitive to key insertion order, which
                     # can differ between our XML parser and Kimi's native JSON output.
@@ -1181,7 +1147,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
                 # and we haven't already sent a nudge (prevents infinite loop).
                 # NIM + Google: the classifier catches alien formats (JSON blobs,
                 # YAML, || tags, etc.) on both backends. Cloudflare is still excluded
-                # — its native tool format differs enough to risk false positives.
+                # - its native tool format differs enough to risk false positives.
                 if (not self._current_tool_call_log
                         and not self._alien_nudge_sent
                         and config.ACTIVE_BACKEND in ("nim", "google")):
@@ -1195,6 +1161,28 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
                                 f"(p={_prob:.2f}) — nudging model to retry[/yellow]"
                             )
                             self._alien_nudge_sent = True
+                            
+                            # Bug fix: append the assistant's bad response before the user's nudge
+                            # so we don't send two consecutive user messages (which crashes Gemini).
+                            _thinking = thinking_content or think_extracted or ""
+                            _base_content = clean_content or raw_content or ""
+                            asst_msg = {
+                                "role": "assistant",
+                                "content": (
+                                    f"<think>\n{_thinking}\n</think>\n\n{_base_content}"
+                                    if _thinking else _base_content
+                                ),
+                            }
+                            if config.THINKING_TYPE == "native":
+                                _kimi_thinking = response_data.get("thinking")
+                                if _kimi_thinking:
+                                    asst_msg["reasoning"] = _kimi_thinking
+                            if config.ACTIVE_BACKEND == "google":
+                                _g_sig = response_data.get("thought_signature")
+                                if _g_sig:
+                                    asst_msg["_google_thought_sig"] = _g_sig
+                            messages.append(asst_msg)
+
                             messages.append({
                                 "role": "user",
                                 "content": (
@@ -1245,7 +1233,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             # content as a <reasoning> block. This way the model re-reads its
             # own prior chain-of-thought when it receives power results, so it
             # remembers *why* it called the power and *what it was checking*.
-            # Works identically for all backends — it's just text in content.
+            # Works identically for all backends - it's just text in content.
             # Guard: only added when non-empty so silent models are unaffected.
             _thinking = thinking_content or think_extracted or ""
             _base_content = clean_content or raw_content or ""
@@ -1264,7 +1252,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             # Google thought_signature: attach in-memory only so _convert_messages_to_gemini
             # can emit a proper thought Part on the next API call (when Google reads the tool
             # result). Only set on the Google backend; stripped by the dispatcher for all
-            # others. NOT saved to chat_history — purely transient within this turn loop.
+            # others. NOT saved to chat_history - purely transient within this turn loop.
             if config.ACTIVE_BACKEND == "google":
                 _g_sig = response_data.get("thought_signature")
                 if _g_sig:
@@ -1343,7 +1331,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         surrounding narrative text (prose, explanations, comments).
 
         Used to surface text the model wrote alongside tool calls that would
-        otherwise be swallowed — only the final response (no tool calls) gets
+        otherwise be swallowed - only the final response (no tool calls) gets
         printed via start.py; intermediate responses need this.
         """
         result = content
@@ -1381,7 +1369,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         """
         save_json_atomic(config.CHAT_HISTORY_FILE, self.chat_history)
 
-        # Mirror last turn to permanent global .jsonl file — UNLESS caller
+        # Mirror last turn to permanent global .jsonl file - UNLESS caller
         # says to skip (e.g. partial/interrupt saves, /restore truncations).
         if skip_global:
             return

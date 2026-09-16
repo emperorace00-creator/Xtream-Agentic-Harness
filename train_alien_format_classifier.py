@@ -5,7 +5,7 @@ train_alien_format_classifier.py
 Binary classifier for the "alien tool format" problem: the model emitted its
 OWN native tool-call syntax (DeepSeek DSML, Qwen/Hermes <tool_call>, MiniMax
 <minimax:tool_call>, an older DeepSeek-V3/R1 <|tool_call_begin|> block, etc.)
-instead of this project's pseudo-XML "powers" format — as opposed to just
+instead of this project's pseudo-XML "powers" format - as opposed to just
 mentioning a tool name in prose, quoting a past result, or showing an example
 in a code fence.
 
@@ -15,10 +15,10 @@ SCOPE (read this before wiring it in):
   turns where your existing deterministic checks are ambiguous:
     - pseudo_calls == []                     (your XML parser found nothing)
     - self._current_tool_call_log == []      (no tool has already run this turn
-                                                — rules out final-synthesis prose)
+                                                - rules out final-synthesis prose)
     - at least one known tool name appears   (cheap pre-filter, in this file
       somewhere in the text                    as `pref_known_tool_hits`)
-  It does NOT handle "model said 'let me search' and then wrote nothing" —
+  It does NOT handle "model said 'let me search' and then wrote nothing" -
   that's a phrase-presence check, not a format-detection problem, and belongs
   in plain code, not a classifier.
 
@@ -40,7 +40,7 @@ OUTPUT
 RETRAINING ON REAL DATA (do this once you have production traffic)
   This bootstrap trains entirely on synthetic examples generated from
   documented tool-call formats (cited in comments below). That's a
-  reasonable cold start, but it WILL have blind spots — most importantly,
+  reasonable cold start, but it WILL have blind spots - most importantly,
   totally novel syntaxes from model families not covered here, and
   "code block explaining the format" negatives it wasn't shown a similar
   case for. Log every case this fires on (or nearly fires on) in
@@ -72,7 +72,7 @@ RNG = random.Random(1234)
 
 MODEL_PATH = Path(__file__).parent / "alien_format_clf.joblib"
 
-# GUESS, NOT VERIFIED — point this at wherever your real chat history is
+# GUESS, NOT VERIFIED - point this at wherever your real chat history is
 # actually stored (in emperor_agent.py that's `config.CHAT_HISTORY_FILE` +
 # `self.global_history.write_turn(...)`, which this script has not seen the
 # internals of). Mining is OFF by default (opt in with --mine) until you've
@@ -87,7 +87,7 @@ REAL_EXAMPLE_OVERSAMPLE = 8   # each real logged example is repeated this many
 # YOUR PROJECT'S TOOL SCHEMA
 # Mirrors GROUP_TOOLS_UNION / STRUCTURED / SIMPLE_PARAM in
 # core_tool_definitions.py + emperor_agent.py. Edit this if your tool list
-# changes — it drives both the "your own correct format" negatives and the
+# changes - it drives both the "your own correct format" negatives and the
 # realistic args used inside the alien-format positives.
 # ════════════════════════════════════════════════════════════════════════
 
@@ -103,6 +103,7 @@ TOOLS = {
     "ingest_pdf":        {"kind": "simple", "param": "filename"},
     "ingest_text":       {"kind": "simple", "param": "filename"},
     "doc_search":        {"kind": "struct", "fields": ["query", "top_k"]},
+    "search_semantic_scholar": {"kind": "struct", "fields": ["query", "limit", "year"]},
     "bash":              {"kind": "simple", "param": "command"},
     "show_image":        {"kind": "simple", "param": "file"},
 }
@@ -134,10 +135,12 @@ def _val_for(tool: str, field: str) -> str:
         return "def foo():\n    pass"
     if field in ("new_str",):
         return "def foo():\n    return 42"
-    if field in ("start", "end", "top_k", "count", "max_results", "context_lines"):
+    if field in ("start", "end", "top_k", "count", "max_results", "context_lines", "limit"):
         return str(RNG.randint(1, 200))
     if field in ("regex", "semantic"):
         return RNG.choice(["true", "false"])
+    if field == "year":
+        return RNG.choice(["2020-", "2021-2023", "2019-", ""])
     if field == "context":
         return "gather vs wait"
     if field == "pattern":
@@ -177,7 +180,7 @@ def random_args(tool: str) -> dict:
 #   - YAML-style:              key-value flat format observed in practice
 #   - Pipe-delimited:          |tool| name |key| value |/tool| style
 #   - ASCII-pipe DSML:         <|DSML|> with ASCII | not fullwidth ｜
-#   - Kimi native — NOT included here on purpose: your code already parses
+#   - Kimi native - NOT included here on purpose: your code already parses
 #     it correctly (_parse_kimi_native_tools), so it's not an "alien" case.
 # ════════════════════════════════════════════════════════════════════════
 
@@ -231,7 +234,7 @@ def _render_pythonic(tool, args):
 
 def _render_glm(tool, args):
     # GLM-4.5/4.6: <tool_call>{name}<arg_key>{key}</arg_key><arg_value>{value}</arg_value>...
-    # Note the outer tag NAME collides with Hermes's <tool_call> — the
+    # Note the outer tag NAME collides with Hermes's <tool_call> - the
     # internal structure (arg_key/arg_value pairs, no JSON) is what
     # distinguishes it, which is a genuinely useful case for the classifier
     # to see (same wrapper token, different internals).
@@ -291,7 +294,7 @@ def _render_qwen_legacy(tool, args):
 
 
 def _render_plain_json(tool, args):
-    # Plain JSON blob with 'tool', 'name', or 'function_name' key — no wrapper.
+    # Plain JSON blob with 'tool', 'name', or 'function_name' key - no wrapper.
     style = RNG.choice(["tool_key", "name_key", "function_name_key"])
     indent = RNG.choice([None, 2])
     if style == "tool_key":
@@ -373,7 +376,7 @@ def _truncate_mid_stream(s: str) -> str:
     """
     Simulate a real, commonly-reported failure mode: the model starts
     emitting an alien tool call and generation stops (hits EOS / max
-    tokens / gets cut) before the closing tag — e.g. the llama.cpp issue
+    tokens / gets cut) before the closing tag - e.g. the llama.cpp issue
     where GLM/MiniMax/Qwen3-Coder models sometimes emit only a partial
     tool-call block. Cutting at a random point (never past the halfway
     mark, so the fragment is still recognizably alien) trains the
@@ -384,7 +387,7 @@ def _truncate_mid_stream(s: str) -> str:
     return s[:cut]
 
 # ════════════════════════════════════════════════════════════════════════
-# YOUR PROJECT'S OWN (correct) FORMAT — used for negatives so the model
+# YOUR PROJECT'S OWN (correct) FORMAT - used for negatives so the model
 # learns "this shape is fine", mirroring _parse_pseudo_tools in
 # emperor_agent.py.
 # ════════════════════════════════════════════════════════════════════════
@@ -401,7 +404,7 @@ def _render_own_format(tool, args):
 
 
 # ════════════════════════════════════════════════════════════════════════
-# SURROUNDING PROSE POOLS — real responses aren't bare tags, they have
+# SURROUNDING PROSE POOLS - real responses aren't bare tags, they have
 # narrative text around them. Sampling this in gives the vectorizer
 # something realistic to generalize over instead of memorizing 7 fixed
 # templates.
@@ -515,7 +518,7 @@ def gen_positive() -> str:
         pieces.append(lead)
 
     # ~30% of the time: 1-2 correctly-formatted calls happened first, then
-    # the model switches to alien format mid-turn — the hardest positive.
+    # the model switches to alien format mid-turn - the hardest positive.
     if RNG.random() < 0.3:
         n_correct = RNG.randint(1, 2)
         for _ in range(n_correct):
@@ -539,7 +542,7 @@ def gen_negative() -> str:
         "unrelated",
         "system_echo",
         "json_yaml_prose", "json_yaml_prose",   # JSON/YAML that is NOT a
-                                                  # tool call — teaches the
+                                                  # tool call - teaches the
                                                   # classifier that mere JSON
                                                   # structure isn't enough
     ])
@@ -615,7 +618,7 @@ def mine_from_chat_histories() -> tuple[list, list]:
       - has_sys_result    -> 0   (matches your own result-echo scaffolding)
       - has_alien_marker (and NOT Kimi's real format) -> 1
 
-    Anything else — a known tool name present, but none of the above match —
+    Anything else - a known tool name present, but none of the above match -
     is NOT auto-labeled. That "I don't recognize this shape" bucket is
     exactly where a genuinely novel alien format would land, and trusting
     the same regex to call it "clean" would silently teach the classifier
@@ -624,7 +627,7 @@ def mine_from_chat_histories() -> tuple[list, list]:
     they ever enter training.
 
     Also explicitly excludes Kimi's native <|tool_call_begin|> format from
-    the positive bucket — your code already parses and executes that
+    the positive bucket - your code already parses and executes that
     correctly (_parse_kimi_native_tools), so labeling it "alien / needs a
     nudge" would teach the classifier to flag a working code path.
 
@@ -648,7 +651,7 @@ def mine_from_chat_histories() -> tuple[list, list]:
     own_xml_re = re.compile(
         r'<(' + '|'.join(re.escape(t) for t in TOOL_NAMES) + r')(\s[^>]*)?(>|/>)'
     )
-    # Kimi's real format, mirroring _parse_kimi_native_tools's own regex —
+    # Kimi's real format, mirroring _parse_kimi_native_tools's own regex -
     # a legitimately supported call, not an alien one.
     kimi_native_re = re.compile(
         r'<\|tool_call_begin\|>\s*functions\.\w+(?::\d+)?\s*<\|tool_call_argument_begin\|>'
@@ -687,7 +690,7 @@ def mine_from_chat_histories() -> tuple[list, list]:
             has_sys_result   = bool(_SYSTEM_RESULT_RE.search(visible))
 
             if is_kimi:
-                # Legitimate, already-handled format — exclude entirely,
+                # Legitimate, already-handled format - exclude entirely,
                 # don't feed it in as either label.
                 n_kimi_skipped += 1
                 continue
@@ -700,7 +703,7 @@ def mine_from_chat_histories() -> tuple[list, list]:
                 labels.append(0)
                 n_neg += 1
             else:
-                # Ambiguous — don't guess. Surface for human labeling instead.
+                # Ambiguous - don't guess. Surface for human labeling instead.
                 review_rows.append(visible)
                 n_review += 1
 
@@ -832,7 +835,7 @@ class AlienFormatDetector:
         #
         # Problem: when the script runs directly (__name__ == '__main__'), the class
         # lives in __main__ and pickle records it there.  When emperor_agent loads it,
-        # __main__ is emperor_agent — no AlienFormatDetector → AttributeError.
+        # __main__ is emperor_agent - no AlienFormatDetector → AttributeError.
         #
         # Python 3.14 fix: register the current __main__ module under the canonical
         # module name in sys.modules, AND patch __module__ on the class.  Pickle then
@@ -919,7 +922,7 @@ def eval_manual_examples(det: AlienFormatDetector):
         ("For reference, MiniMax emits calls like:\n```\n<minimax:tool_call><invoke name=\"bash\">"
          "<parameter name=\"command\">ls</parameter></invoke></minimax:tool_call>\n```\n"
          "but you should use the XML powers format instead.", 0),
-        # U+FF5C fullwidth vertical line — matches what DeepSeek actually emits.
+        # U+FF5C fullwidth vertical line - matches what DeepSeek actually emits.
         ("<｜DSML｜tool_calls>\n<｜DSML｜invoke name=\"bash\">\n<｜DSML｜parameter name=\"command\" "
          "string=\"true\">pytest tests/</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜tool_calls>", 1),
         ("<minimax:tool_call>\n<invoke name=\"str_replace\">\n<parameter name=\"file\">config.py</parameter>"

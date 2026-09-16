@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# start.py — single entry point: Docker sandbox setup + agent loop.
+# start.py - single entry point: Docker sandbox setup + agent loop.
 #
 # Run this file to launch Emperor for this project.
 #
-# Docker is optional — if the engine is not running the agent starts
+# Docker is optional - if the engine is not running the agent starts
 # normally but bash-tool mode (/tool) is blocked with a clear warning.
 
 import os
@@ -26,7 +26,7 @@ from prompt_toolkit.styles import Style as PTStyle
 
 # prompt_toolkit's CheckboxList/RadioList hardcode ScrollbarMargin(display_arrows=True)
 # with no way to pass custom symbols through checkboxlist_dialog(). Its library
-# defaults are the raw ASCII characters "^" and "v" — a caret sits small and high
+# defaults are the raw ASCII characters "^" and "v" - a caret sits small and high
 # in the cell while "v" spans near full letter-height, so the two arrows never
 # look the same size even though they share one style class. Patch the class
 # default so every dialog in the app (current and future) gets a matched,
@@ -96,7 +96,7 @@ _IMAGE_NAME   = "emperor-base:latest"
 #   - bm25_corpus.pkl        (workspace_tracker's BM25 index cache)
 #   - *.tmp orphans          (left behind if a crash interrupts save_json_atomic's
 #                             write-then-os.replace sequence)
-# Both now get swept up too. Still top-level / non-recursive, same as before —
+# Both now get swept up too. Still top-level / non-recursive, same as before -
 # subfolders like backups/ and chat_histories/ are handled separately (tsm.clear_all()
 # / preserved intentionally) and are not touched here.
 _RESET_PATTERNS = ["*.json", "*.pkl", "*.tmp"]
@@ -111,7 +111,7 @@ def _setup_sandbox() -> bool:
     Ensure the Docker sandbox container is running.
 
     Returns True if the container is up and ready, False if Docker is
-    unavailable or setup failed. Never raises — the agent always starts.
+    unavailable or setup failed. Never raises - the agent always starts.
     """
     scratch_dir = config.SCRATCH_DIR
     uploads_dir = config.UPLOADS_FOLDER
@@ -186,7 +186,7 @@ def edit_in_external_editor(old_content: str) -> str:
     full paste support, and no blank-line-terminated input() footguns.
 
     Falls back to the plain input() loop (returns None) if no editor could be
-    launched — e.g. $EDITOR/nano missing, or running in a non-interactive shell.
+    launched - e.g. $EDITOR/nano missing, or running in a non-interactive shell.
     """
     editor_raw = os.environ.get("EDITOR", "nano")
     try:
@@ -233,7 +233,7 @@ def _save_partial_history(agent, prompt_payload):
 
         # Bug 14: this used to set agent.last_tool_summary, which
         # generate_with_history() injects into the NEXT turn's system prompt
-        # under "[LAST TURN ACTIONS]" — implying those actions were
+        # under "[LAST TURN ACTIONS]" - implying those actions were
         # committed. But a cancelled turn's workspace changes are rolled
         # back, so that label would describe rolled-back actions as if they
         # actually happened. Store it under a distinctly-labelled field
@@ -258,7 +258,7 @@ tsm           = TurnStateManager()
 
 atexit.register(lambda: emperor.save_history(skip_global=True))
 
-# Path for the rerun Write-Ahead Log (WAL) — tail turns persisted here
+# Path for the rerun Write-Ahead Log (WAL) - tail turns persisted here
 # before history is truncated, so a process kill mid-rerun can be recovered.
 _RERUN_TAIL_FILE = os.path.join(config.DATABASE_DIR, "rerun_pending_tail.json")
 
@@ -282,7 +282,7 @@ def _save_rerun_tail(target: int, current: int,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# GENERATION HELPER  — shared by normal turns, /rerun, and /edit user
+# GENERATION HELPER  - shared by normal turns, /rerun, and /edit user
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _run_turn(prompt_payload: str, images=None, uploaded_filenames=None,
@@ -366,14 +366,14 @@ def _run_turn(prompt_payload: str, images=None, uploaded_filenames=None,
 
                 # ── Rollback workspace changes ──
                 # A backup only exists if a tool was actually called this turn
-                # (lazy backup — item 4). If it's still copying in the
+                # (lazy backup - item 4). If it's still copying in the
                 # background, give it a moment to finish before deciding.
                 if emperor._active_groups and emperor._backup_created and emperor._backup_thread is not None:
                     emperor._backup_thread.join(timeout=10)
                 if emperor._active_groups and emperor._backup_created and emperor._backup_success and os.path.exists(backup_dir):
                     console.print(f"[{META}]rolling back workspace changes...[/{META}]")
                     # NOTE: the backup itself excludes EXCL_DIRS (node_modules, venv,
-                    # .git, etc. — see emperor_agent._start_scratch_backup), so those
+                    # .git, etc. - see emperor_agent._start_scratch_backup), so those
                     # dirs must be preserved here rather than wiped, exactly like
                     # TurnStateManager.restore_turn() already does. Wiping everything
                     # and copying back only from backup_dir would otherwise silently
@@ -419,7 +419,7 @@ def _run_turn(prompt_payload: str, images=None, uploaded_filenames=None,
                             emperor.code_search_agent.mark_stale()
 
                         # Bug #37 fix: uploads cache may reference a PDF that was
-                        # ingested mid-turn and then reverted — clear it so the
+                        # ingested mid-turn and then reverted - clear it so the
                         # model doesn't see a stale "ALREADY INGESTED" status.
                         emperor._uploads_cache = None
 
@@ -496,7 +496,7 @@ def _run_turn(prompt_payload: str, images=None, uploaded_filenames=None,
 
     # ── Per-turn backup ───────────────────────────────────────────────────
     # NOTE: this used to check `"tool" in emperor._active_groups`, but
-    # _active_groups only ever holds {"web","files","pdf","bash"} — "tool" is
+    # _active_groups only ever holds {"web","files","pdf","bash"} - "tool" is
     # never a member, so this branch was silently dead and every turn fell
     # through to the lightweight else-branch below, even turns that called
     # tools. Fixed to check whether any tool was actually invoked this turn.
@@ -515,7 +515,7 @@ def _run_turn(prompt_payload: str, images=None, uploaded_filenames=None,
         except Exception as e:
             console.print(f"[{WARN}]T{turn_num} backup error: {_esc(str(e))}[/{WARN}]")
     else:
-        # Pure chat turn — no workspace changes to archive.
+        # Pure chat turn - no workspace changes to archive.
         # Still record a lightweight ledger entry so /turns shows the turn,
         # but skip the expensive scratch zip.
         try:
@@ -567,7 +567,7 @@ def get_bottom_toolbar():
 # SLASH COMMANDS
 # ══════════════════════════════════════════════════════════════════════════════
 # Each command below is a small, self-contained function operating on the
-# module-level singletons (emperor, tsm, web_agent, image_ocr) — the same
+# module-level singletons (emperor, tsm, web_agent, image_ocr) - the same
 # convention _run_turn() above already uses. Splitting these out of the old
 # flat while-loop body means:
 #   - each command has real local scope (no more leading-underscore vars used
@@ -589,7 +589,7 @@ def _reappend_tail(tail_history: list, tail_ledger: list, target: int, current: 
         return
     emperor.chat_history.extend(tail_history)
     # Partial 2 fix: tail_ledger is a pre-truncation SNAPSHOT captured by the
-    # caller before truncate_history_only(..., keep_tail=True) ran — and that
+    # caller before truncate_history_only(..., keep_tail=True) ran - and that
     # call deliberately does NOT prune _ledger for keep_tail=True (see its
     # docstring), so entries for turns target+1..current are still sitting in
     # tsm._ledger the whole time this function's caller is running. Blindly
@@ -613,22 +613,22 @@ def _reappend_tail(tail_history: list, tail_ledger: list, target: int, current: 
 
 
 def cmd_reset():
-    """/reset — clear the current session, scratch files, and backups."""
+    """/reset - clear the current session, scratch files, and backups."""
     emperor.chat_history.clear()
     emperor.workspace_tracker.reset_workspace()
 
     # Code index persists across /reset (uploads survive the reset below, and
-    # their embeddings are still valid) — just mark it stale so the next
+    # their embeddings are still valid) - just mark it stale so the next
     # semantic search walks disk again. scratch/ entries drop out naturally
     # (their files are gone); uploads/ hashes still match, so those chunks
-    # are kept with zero extra API calls. Do NOT invalidate_index() here —
+    # are kept with zero extra API calls. Do NOT invalidate_index() here -
     # that deletes code_index.json and re-embeds uploads from scratch, which
     # is the opposite of "persists across /reset".
     if getattr(emperor, "code_search_agent", None):
         emperor.code_search_agent.mark_stale()
 
-    # Wipe scratch folder — all model-generated files (code, OCR .txt, etc.)
-    # Uploads are intentionally preserved — user placed them there manually.
+    # Wipe scratch folder - all model-generated files (code, OCR .txt, etc.)
+    # Uploads are intentionally preserved - user placed them there manually.
     if os.path.isdir(config.SCRATCH_DIR):
         for item in os.listdir(config.SCRATCH_DIR):
             item_path = os.path.join(config.SCRATCH_DIR, item)
@@ -668,7 +668,7 @@ def cmd_reset():
 
 
 def cmd_tool():
-    """/tool — open the tool-group checkbox selector."""
+    """/tool - open the tool-group checkbox selector."""
     global DOCKER_AVAILABLE
 
     dialog_style = PTStyle.from_dict({
@@ -730,20 +730,20 @@ def cmd_tool():
 
 
 def cmd_switch_backend(user_text: str):
-    """/nim, /google, /cf, /cloudflare, /local — switch the active LLM backend."""
+    """/nim, /google, /cf, /cloudflare, /local - switch the active LLM backend."""
     backend = "cloudflare" if user_text in ("/cf", "/cloudflare") else user_text[1:]
     console.print(emperor.switch_backend(backend))
     console.print()
 
 
 def cmd_tools_status():
-    """/tools — display current tool mode and active backend."""
+    """/tools - display current tool mode and active backend."""
     console.print(emperor.tools_status())
     console.print()
 
 
 def cmd_ctx():
-    """/ctx — toggle workspace + uploads context injection on/off.
+    """/ctx - toggle workspace + uploads context injection on/off.
     When off, [WORKSPACE] and [UPLOADS FOLDER] are not sent to the model.
     Last-turn-actions and cancelled-turn blocks are unaffected.
     """
@@ -753,7 +753,7 @@ def cmd_ctx():
 
 
 def cmd_history():
-    """/history — print the full conversation history."""
+    """/history - print the full conversation history."""
     if not emperor.chat_history:
         console.print(f"[{META}]no history yet.[/{META}]")
         return
@@ -787,14 +787,14 @@ def cmd_history():
 
 
 def cmd_turns():
-    """/turns — display the turn timeline and revision markers."""
+    """/turns - display the turn timeline and revision markers."""
     console.print()
     console.print(tsm.list_turns())
     console.print()
 
 
 def cmd_review(user_text: str):
-    """/review [focus] — self-review the latest response using the same model + tools.
+    """/review [focus] - self-review the latest response using the same model + tools.
 
     /review             → plain review
     /review <focus>     → review with a user-directed focus appended
@@ -827,7 +827,7 @@ def cmd_review(user_text: str):
 
 
 def cmd_restore(user_text: str):
-    """/restore N | /restore last — revert workspace and memory to a turn."""
+    """/restore N | /restore last - revert workspace and memory to a turn."""
     parts = user_text.split()
     if len(parts) < 2:
         console.print(f"[{WARN}]Usage: /restore N  or  /restore last[/{WARN}]")
@@ -883,7 +883,7 @@ def cmd_restore(user_text: str):
 
 
 def cmd_rerun(user_text: str):
-    """/rerun N | /rerun last — regenerate the AI response at turn N."""
+    """/rerun N | /rerun last - regenerate the AI response at turn N."""
     parts = user_text.split()
     if len(parts) < 2:
         console.print(f"[{WARN}]Usage: /rerun N[/{WARN}]")
@@ -927,7 +927,7 @@ def cmd_rerun(user_text: str):
                           f"turn depended on — refusing instead. Try a more recent turn, "
                           f"or resend this as a new message with the image(s) attached.[/{META}]\n")
             return
-        # Strip the stored "[SYSTEM: Images attached — ...]" text marker back off —
+        # Strip the stored "[SYSTEM: Images attached - ...]" text marker back off -
         # _run_turn will regenerate it correctly from the real filenames
         # once we pass `images=` back in below.
         original_prompt = re.sub(r'\n\[SYSTEM: Images attached.*?\]\s*$', '', original_prompt)
@@ -952,7 +952,7 @@ def cmd_rerun(user_text: str):
     if tail_history:
         _save_rerun_tail(target, current, tail_history, tail_ledger)
 
-    # Truncate history only — keep_tail=True skips archive/ledger
+    # Truncate history only - keep_tail=True skips archive/ledger
     # deletion for T(target+1)..T(current), preserving those turns.
     console.print(f"[{META}]truncating history to T{target - 1}...[/{META}]")
     console.print(tsm.truncate_history_only(target - 1, emperor, keep_tail=True))
@@ -967,7 +967,7 @@ def cmd_rerun(user_text: str):
     console.print(f"[{META}]Rerunning T{target}...[/{META}]\n")
     emperor.last_tool_summary = ""  # clear stale tool context from old turn
     # Bug 3 (was Bug 1): _run_turn() catches KeyboardInterrupt/cancellation
-    # internally and returns None instead of raising — it does NOT throw an
+    # internally and returns None instead of raising - it does NOT throw an
     # exception on cancel. The old try/except/else here treated "no exception
     # raised" as success, so a cancelled rerun still hit the `else` branch and
     # re-appended the tail at offset `target` as if T{target} had been
@@ -990,7 +990,7 @@ def cmd_rerun(user_text: str):
         return
 
     if result is None:
-        # Cancelled — T{target} was never committed, same as an exception
+        # Cancelled - T{target} was never committed, same as an exception
         # from this function's perspective: re-stitch at target-1 (no gap).
         console.print(f"[{WARN}]rerun of T{target} was cancelled — restoring prior conversation tail.[/{WARN}]")
         _reappend_tail(tail_history, tail_ledger, target - 1, current)
@@ -1005,7 +1005,7 @@ def cmd_rerun(user_text: str):
 
 
 def cmd_delete(user_text: str):
-    """/delete N — remove a turn pair from conversation history."""
+    """/delete N - remove a turn pair from conversation history."""
     parts = user_text.split()
     if len(parts) < 2:
         console.print(f"[{WARN}]Usage: /delete N[/{WARN}]")
@@ -1068,7 +1068,7 @@ def cmd_delete(user_text: str):
 
 
 def cmd_edit(user_text: str):
-    """/edit N [user|agent] — rewrite a past message."""
+    """/edit N [user|agent] - rewrite a past message."""
     parts = user_text.split()
     if len(parts) < 2:
         console.print(f"[{WARN}]Usage: /edit N [user|agent][/{WARN}]")
@@ -1100,7 +1100,7 @@ def cmd_edit(user_text: str):
     old_content = _flatten_content(emperor.chat_history[msg_idx].get("content", ""))
 
     # Open the current message in the user's $EDITOR (default: nano) for
-    # in-place editing — pre-filled, full cursor movement, no truncation,
+    # in-place editing - pre-filled, full cursor movement, no truncation,
     # and no blank-line-terminated input() footgun for multiline content.
     console.print()
     console.print(f"── Editing T{target} {role} message {'─' * (50 - len(str(target)) - len(role))}")
@@ -1109,7 +1109,7 @@ def cmd_edit(user_text: str):
     new_content = edit_in_external_editor(str(old_content))
 
     if new_content is None:
-        # Editor unavailable — fall back to the original line-by-line
+        # Editor unavailable - fall back to the original line-by-line
         # prompt so /edit still works, with a clear caveat about blank lines.
         console.print(f"[{META}]Falling back to inline input (blank line ends input — do not include blank lines mid-message):[/{META}]")
         console.print(str(old_content)[:600])
@@ -1147,7 +1147,7 @@ def cmd_edit(user_text: str):
         return
 
     # ── Images: same hard-stop pattern as /rerun. Only relevant for
-    # user edits — an agent edit doesn't regenerate anything, so
+    # user edits - an agent edit doesn't regenerate anything, so
     # nothing gets resent and there's no image to preserve. ────────
     edit_images = None
     if role == "user":
@@ -1166,7 +1166,7 @@ def cmd_edit(user_text: str):
                               f"original turn depended on — refusing instead.[/{META}]\n")
                 return
             # new_content is the edited text of old_content, which still
-            # has the marker baked in (it was the pre-filled editor text) —
+            # has the marker baked in (it was the pre-filled editor text) -
             # strip it so _run_turn regenerates it correctly from the real images.
             new_content = re.sub(r'\n\[SYSTEM: Images attached.*?\]\s*$', '', new_content)
             # Bug #19 fix: re-add the marker from the snapshot filenames so
@@ -1201,7 +1201,7 @@ _COMMANDS_EXACT = {
     "/history": cmd_history,
     "/turns":   cmd_turns,
 }
-# Prefix commands — take a turn number / role argument, so they parse the
+# Prefix commands - take a turn number / role argument, so they parse the
 # raw user_text themselves (e.g. "/rerun 3", "/edit last agent").
 # /review is also a prefix command since it optionally takes a focus string.
 _COMMANDS_PREFIX = [
@@ -1268,7 +1268,7 @@ if os.path.exists(_RERUN_TAIL_FILE):
                            _w_target if isinstance(_w_target, int) else 0,
                            _w_current if isinstance(_w_current, int) else 0)
         else:
-            os.remove(_RERUN_TAIL_FILE)   # empty / corrupt — discard
+            os.remove(_RERUN_TAIL_FILE)   # empty / corrupt - discard
     except Exception as _wal_err:
         console.print(f"[{WARN}]rerun WAL recovery failed: {_esc(str(_wal_err))}[/{WARN}]")
         try:

@@ -1,5 +1,5 @@
 # tool_handlers.py
-# ToolHandlersMixin — all _handle_* methods, the dispatch table, and workspace
+# ToolHandlersMixin - all _handle_* methods, the dispatch table, and workspace
 # scan helpers extracted from emperor_agent.py.
 #
 # EmperorAgent inherits this mixin so its external interface is unchanged.
@@ -20,13 +20,13 @@ import requests
 import config
 from renderer import show_image_in_terminal
 from utils import rerank_passages, compute_view_window, CODE_EXTENSIONS, BASH_BLOCKLIST, console, read_api_key_cached
-# Shared path normalizer — used by view_lines and search_in_file
+# Shared path normalizer - used by view_lines and search_in_file
 _norm = lambda p: os.path.normcase(os.path.normpath(p))
 
 
 # Extensions show_image will attempt to preview via chafa. Kept separate from
 # UPLOAD_EXTENSIONS below (that list is for reading uploaded files as text/
-# code — these are for rendering as a raster image).
+# code - these are for rendering as a raster image).
 IMAGE_PREVIEW_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"}
 
 # File extensions recognised as "uploadable" / "project" code files.
@@ -134,7 +134,7 @@ class ToolHandlersMixin:
         signature simplifies the dispatcher.
 
         Also triggers the lazy pre-turn scratch backup (item 4 / SP-1) on the
-        first call — see _start_scratch_backup() in emperor_agent.py.
+        first call - see _start_scratch_backup() in emperor_agent.py.
         """
         if self._active_groups:
             self._start_scratch_backup()
@@ -151,7 +151,7 @@ class ToolHandlersMixin:
         """
         Search past chat sessions for turns relevant to a query.
         Parsing, incremental embedding, scoring, reranking, and formatting
-        all live in SearchHistoryAgent (search_history_agent.py) — this
+        all live in SearchHistoryAgent (search_history_agent.py) - this
         handler just validates args and delegates.
         """
         query = args.get("query", "").strip()
@@ -167,7 +167,7 @@ class ToolHandlersMixin:
 
     def _handle_ingest_chat(self, args: dict, web_agent) -> str:
         """
-        Import a raw chat transcript (pasted from Gemini/ChatGPT web — unstructured
+        Import a raw chat transcript (pasted from Gemini/ChatGPT web - unstructured
         prose, no "You:"/"AI:" labels) into GLOBAL_HISTORIES_DIR as a synthetic
         two-line .jsonl, so search_history can find it via semantic similarity.
 
@@ -175,7 +175,7 @@ class ToolHandlersMixin:
         _handle_search_history already understands: a "user" line (a stub
         carrying the filename for display) followed by an "assistant" line
         (the full pasted text, which is what actually gets embedded). This
-        produces one turn-pair — no changes needed to the search_history
+        produces one turn-pair - no changes needed to the search_history
         pipeline itself.
         """
         # Accept both <ingest_chat>name.txt</ingest_chat> (falls through to the
@@ -229,7 +229,7 @@ class ToolHandlersMixin:
                         f"(content hash matches) → '{out_name}'. Already searchable via search_history."
                     )
             except Exception:
-                pass  # corrupt/partial sidecar — fall through and re-import
+                pass  # corrupt/partial sidecar - fall through and re-import
 
         text = raw_bytes.decode('utf-8', errors='ignore')
 
@@ -299,12 +299,12 @@ class ToolHandlersMixin:
     def _handle_doc_search(self, args: dict, web_agent) -> str:
         """
         Semantic passage search across all embedded documents in scratch.
-        Uses chunk embeddings (nvidia/llama-nemotron-embed-1b-v2) for conceptual matching —
+        Uses chunk embeddings (nvidia/llama-nemotron-embed-1b-v2) for conceptual matching -
         works even when the user's words don't appear verbatim in the document.
-        Searches .chunks.json files produced by ingest_pdf or ingest_text — not raw code files.
+        Searches .chunks.json files produced by ingest_pdf or ingest_text - not raw code files.
         """
         query = args.get("query", "").strip()
-        # int() cast — LLMs sometimes pass numbers as strings.
+        # int() cast - LLMs sometimes pass numbers as strings.
         # Cap at 10 so the model can't accidentally request top_k=100
         # and flood its own context with passages.
         try:
@@ -344,7 +344,7 @@ class ToolHandlersMixin:
         _uploads_abs = os.path.realpath(config.UPLOADS_FOLDER)
         pdf_path = os.path.join(config.UPLOADS_FOLDER, filename)
         if not os.path.exists(pdf_path):
-            # Fuzzy search — match by basename anywhere under /uploads.
+            # Fuzzy search - match by basename anywhere under /uploads.
             # Bug #1 fix: verify each candidate stays under UPLOADS_FOLDER
             # via realpath to prevent symlink-based escapes.
             for root, _, files in os.walk(config.UPLOADS_FOLDER):
@@ -389,13 +389,13 @@ class ToolHandlersMixin:
         # touch UPLOADS_FOLDER's mtime, so the cache wouldn't otherwise notice.
         self._uploads_cache = None
 
-        # Mark code search index stale — a new .txt was written to scratch
+        # Mark code search index stale - a new .txt was written to scratch
         # regardless of whether doc_search embedding succeeded.
         if hasattr(self, 'code_search_agent') and self.code_search_agent:
             self.code_search_agent.mark_stale()
 
         # Bug 4 (second layer): don't imply doc_search will work just because
-        # text extraction succeeded — surface it plainly when embedding failed
+        # text extraction succeeded - surface it plainly when embedding failed
         # for a reason other than empty text (e.g. embedding API was down).
         if not res.get("embedded", True):
             return (
@@ -417,7 +417,7 @@ class ToolHandlersMixin:
         """
         Chunk + embed a plaintext file so doc_search can query it semantically.
         Mirrors the ingest_pdf pipeline (MD5 skip guard, copy-into-scratch,
-        workspace-tracker registration) but skips OCR entirely — the file is
+        workspace-tracker registration) but skips OCR entirely - the file is
         already plain text.
         """
         filename = (args.get('filename') or args.get('query') or '').strip()
@@ -463,7 +463,7 @@ class ToolHandlersMixin:
                         f"(content hash matches). Use doc_search to query it."
                     )
             except Exception:
-                pass  # corrupt/partial chunks file — fall through to a fresh ingest
+                pass  # corrupt/partial chunks file - fall through to a fresh ingest
 
         # Copy into scratch/ if it came from uploads (mirrors the PDF pipeline,
         # where OCR output always lands in scratch alongside its .chunks.json)
@@ -491,7 +491,7 @@ class ToolHandlersMixin:
         # Invalidate the uploads-scan cache, mirroring ingest_pdf's cache invalidation
         self._uploads_cache = None
 
-        # Mark code search index stale — a new .txt was written to scratch.
+        # Mark code search index stale - a new .txt was written to scratch.
         if hasattr(self, 'code_search_agent') and self.code_search_agent:
             self.code_search_agent.mark_stale()
 
@@ -559,14 +559,14 @@ class ToolHandlersMixin:
 
     def _handle_show_image(self, args: dict, web_agent) -> str:
         """
-        Preview an image the model already created (via bash — dot, matplotlib,
+        Preview an image the model already created (via bash - dot, matplotlib,
         etc.) inline via chafa, and copy it to /outputs so the user can open it.
 
         Deliberately takes an explicit filename rather than auto-detecting the
         "latest" file in scratch: a bash call can produce more than one file
         (e.g. a debug CSV alongside the actual plot), and an explicit path lets
-        a wrong filename come back as a clean, retryable error — same pattern
-        as str_replace's old_str-not-found — instead of silently showing the
+        a wrong filename come back as a clean, retryable error - same pattern
+        as str_replace's old_str-not-found - instead of silently showing the
         wrong image.
         """
         filepath = args.get("file", "").strip()
@@ -639,7 +639,7 @@ class ToolHandlersMixin:
         """
         Translate a container path to its host equivalent and, if it points
         outside the scratch sandbox (e.g. an absolute chat-history file path),
-        validate and read it directly — file_ops itself is scoped to scratch.
+        validate and read it directly - file_ops itself is scoped to scratch.
 
         Shared by _handle_view_lines and _handle_search_in_file, which
         previously each reimplemented this translate+guard+open+read block
@@ -793,13 +793,13 @@ class ToolHandlersMixin:
           /outputs            <- host config.OUTPUTS_DIR   (read/write)
 
         So files the agent writes to config.SCRATCH_DIR are immediately visible
-        inside the container at /workspace/scratch — no syncing needed.
+        inside the container at /workspace/scratch - no syncing needed.
         """
         command = args.get("command", "").strip()
         if not command:
             return "[SYSTEM: ERROR] bash: 'command' is required."
 
-        # Hard blocklist — only truly catastrophic patterns via Regex
+        # Hard blocklist - only truly catastrophic patterns via Regex
         # (BASH_BLOCKLIST is defined in utils.py, imported at module top)
         for pattern in BASH_BLOCKLIST:
             if re.search(pattern, command, re.IGNORECASE):
@@ -1031,7 +1031,7 @@ class ToolHandlersMixin:
         """
         Recursively scan /uploads and return a metadata listing.
         Runs every turn so the model sees new files immediately.
-        All files are directly readable — only PDFs need ingest_pdf first.
+        All files are directly readable - only PDFs need ingest_pdf first.
         pdf_active: when False, suppress the ingest_pdf hint for PDF files
         (the model has no tool to act on it if the PDF group is disabled).
 
@@ -1041,7 +1041,7 @@ class ToolHandlersMixin:
         The cache key also includes pdf_active (the rendered note differs)
         and is explicitly invalidated by _handle_ingest_pdf() on a successful
         ingest, since the "ALREADY INGESTED" note depends on files written to
-        SCRATCH_DIR — not UPLOADS_FOLDER — so an ingest wouldn't otherwise
+        SCRATCH_DIR - not UPLOADS_FOLDER - so an ingest wouldn't otherwise
         bump the uploads folder's mtime.
         """
         if not os.path.isdir(config.UPLOADS_FOLDER):
@@ -1120,7 +1120,7 @@ class ToolHandlersMixin:
         Search the Semantic Scholar academic database.
         Returns title, year, TL;DR/abstract, and Open Access PDF link per paper.
         Results are reranked by relevance (NVIDIA cross-encoder) and truncated
-        at 21,000 chars — same pattern as quick_search.
+        at 21,000 chars - same pattern as quick_search.
         """
         query = (args.get("query") or args.get("_raw") or "").strip()
         if not query:
@@ -1137,7 +1137,7 @@ class ToolHandlersMixin:
         if getattr(config, "SEMANTIC_SCHOLAR_API_KEY_FILE", ""):
             api_key = read_api_key_cached(config.SEMANTIC_SCHOLAR_API_KEY_FILE)
         if not api_key:
-            # Semantic Scholar is fully public — key is optional (higher rate limits only).
+            # Semantic Scholar is fully public - key is optional (higher rate limits only).
             console.print("[dim]ℹ️  No Semantic Scholar API key — running unauthenticated (1 req/s limit)[/dim]")
 
         url = "https://api.semanticscholar.org/graph/v1/paper/search"
@@ -1204,7 +1204,7 @@ class ToolHandlersMixin:
 
             snippets.append(f"{title} ({year}){ref_str}\n   {body_str}{pdf_str}")
 
-        # Rerank by relevance — same NVIDIA cross-encoder used by quick_search.
+        # Rerank by relevance - same NVIDIA cross-encoder used by quick_search.
         # Falls back to original order if NVIDIA key absent or reranker fails.
         nvidia_key = getattr(web_agent, "_nvidia_key", None) if web_agent else None
         order = rerank_passages(query, snippets, api_key=nvidia_key, label="papers")

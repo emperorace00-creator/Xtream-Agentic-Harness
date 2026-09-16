@@ -11,9 +11,9 @@ import config
 
 class FileOpsAgent:
     """
-    Surgical file operations — str_replace edits instead of full file regeneration.
+    Surgical file operations - str_replace edits instead of full file regeneration.
 
-    Primary tool: str_replace — modify only what's needed.
+    Primary tool: str_replace - modify only what's needed.
     """
 
     def __init__(self, workspace_root: str = None, workspace_tracker=None, code_search_agent=None):
@@ -27,7 +27,7 @@ class FileOpsAgent:
 
         Args:
             query:       Exact string/regex (semantic=False) or concept (semantic=True)
-            file_filter: Optional glob filter e.g. '*.py' — used in grep mode and
+            file_filter: Optional glob filter e.g. '*.py' - used in grep mode and
                          Codestral Embed semantic search
             semantic:    True = Codestral Embed concept search (BM25 fallback),
                          False = grep (default)
@@ -123,9 +123,9 @@ class FileOpsAgent:
             new_str:   Replacement string.
             verify:    If True, print a diff summary (edit is always applied).
             count:     How many occurrences to replace.
-                         1   — default; fails if old_str is not unique (original behaviour).
-                         0   — replace ALL occurrences (pass count="all" from XML).
-                         N>1 — replace the first N occurrences.
+                         1   - default; fails if old_str is not unique (original behaviour).
+                         0   - replace ALL occurrences (pass count="all" from XML).
+                         N>1 - replace the first N occurrences.
 
         Returns:
             dict with success, changes (replaced count), diff, error.
@@ -280,7 +280,7 @@ class FileOpsAgent:
                     matched = re.search(pattern, line) if regex else (pattern.lower() in line.lower())
                 except re.error:
                     # Model passed an invalid regex (e.g. unbalanced parenthesis like
-                    # "self.store_version(" — fall back to literal string search so the
+                    # "self.store_version(" - fall back to literal string search so the
                     # tool returns useful results instead of an exception dict.
                     matched = pattern in line
                 if matched:

@@ -1,110 +1,114 @@
-﻿# Xtream - Sandboxed AI Assistant
+# Xtream - Sandboxed AI Assistant
+
+Xtream is an agentic coding and research assistant that talks to multiple LLM
+backends - NVIDIA NIM, Google Gemini, or
+your own local llama.cpp server - through a plain XML tool-calling protocol,
+so tool use works with any text-generating model, not just ones with native
+function-calling support. Code execution runs inside an isolated Docker
+sandbox. PDFs and plaintext files are ingested through a RAG pipeline
+(chunking → embeddings → cosine similarity → reranking). Every turn is
+zip-archived, so you can undo, rerun, or resume mid-task after an interrupt,
+up to the last 20 turns, via `/restore N`.
 
 ## TL;DR
 
-- **XML tool calling** - tools are invoked via XML tags so its easy for any model to call tools
-- **Academic &  web search** - Linkup for live web search; Semantic Scholar for academic papers with TL;DR summaries and Open Access PDF links
-- **PDF & text RAG** - ingest PDFs or `.txt`/`.md` files, chunk + embed them, then search semantically via `<doc_search>`
-- **Semantic code search** - `workspace_search` with `semantic=true` embeds functions/classes (tree-sitter chunking) so model can query by concept.
-- **State rollback** - every turn is zip-archived; `/restore N` reverts the workspace and conversation to any of the last 20 turns
-- **Sandboxed code execution** - `<bash>` commands run inside an isolated Docker container; the CLI stays on the host
-- **Cross-session history** - every conversation is appended to a global JSONL archive, searchable via `<search_history>` using embeddings across all past sessions
-- **Auto tool-format correction** - a local ML classifier detects when a model hallucinates the wrong tool format and nudges it to retry correctly
-- **Image OCR & vision tiling** - dense images are tiled to capture fine detail
-
----
-
-Xtream is an agentic assistant that talks to multiple LLM backends (NVIDIA, Gemini, or your own local llama.cpp server) through a simple XML tool-calling
-protocol - so tool use works with any model. Code execution runs inside a Docker sandbox,
-PDFs are ingested through a RAG pipeline (chunking → embeddings → cosine
-similarity → reranking), workspace code search runs on Codestral Embed (with
-BM25 as a silent fallback), and every turn is
-archived so you can undo, rerun, or resume mid-task after an interrupt.
+- **Semantic code search** - `workspace_search semantic=true` chunks code by
+  function/class (tree-sitter) and embeds it, so a query like "where do we
+  handle rate limiting" finds the right function even when those exact
+  words never appear
+- **Auto tool-format correction** - a local logistic-regression classifier
+  catches it when a model hallucinates the wrong tool-call format and
+  nudges it to retry, instead of dropping the turn
+- **Academic & web search** - Linkup for live web results; Semantic Scholar
+  for papers, with AI-generated TL;DRs and Open Access PDF links
+- **Cross-session history** - every conversation is appended to a global,
+  embeddings-searchable archive via `<search_history>`, independent of any
+  single chat session
+- **Image OCR & vision tiling** - dense scans/screenshots are automatically
+  tiled so the model can read fine detail it would otherwise miss
 
 ---
 
 ## Architecture
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           start.py (Entry Point)                            │
-│        Creates: ImageOCRAgent, EmperorAgent, TurnStateManager               │
-│        Commands: /tool  /google /nim  /cf  /local  /reset  /restore         │
-│                 /edit  /rerun  /delete  /history  /turns                    │
-└────────┬──────────────────────────┬──────────────────────────┬──────────────┘
-         │                          │                          │
-┌────────▼────────┐       ┌─────────▼─────────┐      ┌─────────▼────────┐
-│  ImageOCRAgent  │  ──>  │   EmperorAgent    │      │ TurnStateManager │
-│ (used for PDFs) │       │                   │      │ (Zip Archives,   │
-│                 │       └─────────┬─────────┘      │  Turn Ledger)    │
-└─────────────────┘                 │                └──────────────────┘
-                                    |
-          ┌─────────────────────────┼─────────────────────────┬──────────────┐
-          │                         │                         │              │
-┌─────────▼─────────┐ ──> ┌─────────▼─────────┐     ┌─────────▼────────┐  ┌───▼──────────────┐
-│ WorkspaceTracker  │ owns│   FileOpsAgent    │     │  DocSearchAgent  │  │  Docker Sandbox  │
-│ (BM25 fallback &  │     │  (str_replace,    │     │  (chunk+embed,   │  │  (docker exec,   │
-│  Reconcile)       │     │  view_lines,      │     │   cosine sim,    │  │  via bash tool)  │
-│                   │     │  search_in_file,  │     │   doc_search)    │  │                  │
-│                   │     │  workspace_search)│     │                  │  │                  │
-└───────────────────┘     └─────────┬─────────┘     └──────────────────┘  └──────────────────┘
-                                    │
-                          ┌─────────▼─────────┐
-                          │  CodeSearchAgent  │
-                          │  (tree-sitter     │
-                          │   chunk + Codestral│
-                          │   Embed semantic) │
-                          └───────────────────┘
+```mermaid
+graph TD
+    %% Catppuccin Latte (Light) Theme
+    classDef entry fill:#e6e9ef,stroke:#8839ef,stroke-width:2px,color:#4c4f69,rx:8px,ry:8px;
+    classDef core fill:#e6e9ef,stroke:#ea76cb,stroke-width:2px,color:#4c4f69,rx:8px,ry:8px;
+    classDef agent fill:#eff1f5,stroke:#7287fd,stroke-width:2px,color:#4c4f69,rx:8px,ry:8px;
+    classDef storage fill:#eff1f5,stroke:#df8e1d,stroke-width:2px,color:#4c4f69,rx:8px,ry:8px;
+    classDef sandbox fill:#f2e9e1,stroke:#dd7878,stroke-width:2px,color:#4c4f69,rx:8px,ry:8px;
 
-Extra features: ToolCallSummarizer and
-GlobalHistoryWriter - see Operations & UI and State Management below.
+    %% Nodes
+    Start(["start.py (Entry Point)"]):::entry
+    ImageOCR["ImageOCRAgent<br/>(PDFs & Vision)"]:::agent
+    TurnState[("TurnStateManager<br/>(Zip Archives & Ledger)")]:::storage
+    Emperor("EmperorAgent<br/>(Core Agent Loop)"):::core
+    
+    %% Relationships
+    Start -->|Creates| ImageOCR
+    Start -->|Creates| TurnState
+    Start -->|Creates| Emperor
+    
+    ImageOCR -.->|Passed into| Emperor
+    
+    subgraph Core [ ]
+        Docker[("🐳 Docker Sandbox<br/>(bash execution)")]:::sandbox
+        DocSearch["DocSearchAgent<br/>(RAG pipeline)"]:::agent
+        SearchHist["SearchHistoryAgent"]:::agent
+        FileOps["📁 FileOpsAgent<br/>(str_replace, search_in_file)"]:::agent
+        Workspace["WorkspaceTracker<br/>(BM25 fallback & sync)"]:::agent
+        CodeSearch["CodeSearchAgent<br/>(Tree-sitter + Codestral)"]:::agent
+    end
+    
+    Emperor --> Docker
+    Emperor --> DocSearch
+    Emperor --> SearchHist
+    Emperor --> FileOps
+    
+    FileOps --> Workspace
+    FileOps --> CodeSearch
+
+    %% Subgraph styling to remove default yellow background
+    style Core fill:none,stroke:#b4befe,stroke-width:2px,stroke-dasharray: 5 5
 ```
+
+`EmperorAgent` also owns `SearchHistoryAgent`, `ToolCallSummarizer`, and
+`GlobalHistoryWriter` - see Operations & UI and State Management below.
 
 ## Features
 
 ### Core
-- **Multi-Backend Support** - Supports Cloudflare Workers AI (default), NVIDIA NIM,
-  Google Gemini, and a local llama.cpp server. Switch backends during a session with
+- **Multi-Backend Support** - Switch between backends mid-session with
   `/cf`, `/nim`, `/google`, or `/local`.
-- **XML Tool System** - Uses XML tag format (`<bash>`, `<str_replace>`, etc.) for tool
-  execution, making it compatible with any text-generating model.
-- **NIM Send-Time XML-to-JSON Tool Mapping** - Translates inline XML tags into standard OpenAI/NIM `tool_calls` JSON schemas at send-time. This aligns with the native tool-calling format the models were trained on (preserving a coherent reasoning trajectory)
-- **Gemini Thought Signature Serialization** - Captures the encrypted `thought_signature` from Google Gemini’s streaming thought chunks. When the subsequent tool result is sent back, the agent injects this signature as a native thought part, allowing the Gemini API to restore its internal reasoning state
-- **Tool Calling Format Auto-Correction** - Detects when models hallucinate absurd tool-calling structure instead of the required XML tags, using a local logistic regression classifier. Automatically intercepts and nudges the model to retry in the correct format without breaking the turn.
-- **Academic Literature Search** - Queries the Semantic Scholar database via the `research` tool group. Returns title, year, AI-generated TL;DR, and Open Access PDF link per paper. Results are reranked by relevance and support year filtering (`2022-`, `2020-2024`). Enabled via `/tool` → research.
-- **Sandboxed Execution** - Code execution runs inside an isolated Docker container.
-  The CLI runs natively on the host. `/tool` opens a tool group selector (`web`, `files`, `pdf`, `bash`).
-  Docker is required only if the `bash` group is enabled.
+- **NIM Send-Time XML-to-JSON Tool Mapping** - Translates inline XML tags into standard OpenAI/NIM `tool_calls` JSON schemas at send-time. This aligns with the native tool-calling format the models were trained on (preserving a coherent reasoning trajectory).
+- **Gemini Thought Signature Serialization** - Captures the encrypted `thought_signature` from Google Gemini's streaming thought chunks. When the subsequent tool result is sent back, the agent injects this signature as a native thought part, allowing the Gemini API to restore its internal reasoning state.
+- **Academic Literature Search** - Semantic Scholar results are reranked by relevance and support year filtering (`2022-`, `2020-2024`). Enabled via `/tool` → research.
+- **Sandboxed Execution** - `/tool` opens a tool group selector (`web`, `files`, `pdf`, `bash`); Docker is required only if the `bash` group is enabled. The CLI itself always runs natively on the host.
 - **File Storage** - Files are organized into three directories: `uploads/` for user-provided files, `scratch/` for the persistent working directory, and `outputs/` for generated shared artifacts.
 
 ### Intelligence & Search
-- **Web Search** - Uses Linkup for web search. Truncates long pages by extracting main
-  content and stripping navigation elements.
-- **Search Reranking** - Uses an cross-encoder model to rerank both web search results and global history search candidates before returning
-  them to the model.
-- **Image OCR & Vision Tiling** - Processes images and PDFs with parallel OCR(gemini+NIM). Dense documents are automatically sliced into tiles and evaluated to capture fine micro-details.
+- **Web Search** - Long pages are truncated by extracting main content and stripping navigation elements before they reach the model.
+- **Search Reranking** - A cross-encoder model reranks both web search results and global history candidates before they reach the model.
+- **Image OCR & Vision Tiling** - Images and PDFs are processed with parallel OCR (Gemini + NIM) for redundancy and speed.
 - **PDF Ingestion** - Processes PDFs through the OCR pipeline, chunks the text, generates embeddings, and performs cosine similarity search via
   `doc_search`. Plaintext files (`.txt`, `.md`) skip the OCR step entirely -
   `ingest_text` chunks and embeds them directly so they're searchable the
   same way.
-- **Workspace Search** - Two distinct modes, not one feature with a toggle:
-  by default (`semantic=false`, the default) `workspace_search` is a plain
-  substring grep across **both** `scratch/` and `uploads/`. Setting
-  `semantic=true` switches to Codestral Embed concept search: files are
-  chunked by function/class (tree-sitter, regex fallback), embedded, and
-  ranked by cosine similarity — so "where do we handle rate limiting?"
-  finds the right function even when those words never appear. BM25 is
-  kept as a silent fallback if the Mistral key is missing or the embed
-  call fails. Note this is true embedding-based semantic search, sharing
-  the same idea as `doc_search` / `search_history` but using a code-native
-  embedder (Codestral Embed via `api.mistral.ai`) rather than Nemotron.
+- **Workspace Search** - Two distinct modes, not a single feature with a
+  toggle: by default, `semantic=false` runs a plain substring grep across
+  both `scratch/` and `uploads/`. Setting `semantic=true` switches to
+  Codestral Embed concept search - files are chunked by function/class
+  (tree-sitter, with a regex fallback), embedded, and ranked by cosine
+  similarity, so a query like "where do we handle rate limiting" finds the
+  right function even when those exact words never appear. BM25 is kept as
+  a silent fallback if the Mistral key is missing or the embed call fails.
 
 ### State Management
-- **State Rollback** - Archives the scratch directory and workspace registry into a zip
-  file at every successful turn (rolling window of the last 20 turns). `/restore N`
-  reverts the environment to any archived state.
+- **State Rollback** - Archives the scratch directory and workspace registry into a zip file at every successful turn; `/restore N` reverts the environment to any archived state.
 - **History Editing** - `/edit N` modifies any previous message. Editing a **user** or
-  **agent** message replaces the stored text. Run `/rerun N` afterward if you want to regenrate response.
+  **agent** message replaces the stored text. Run `/rerun N` afterward if you want to regenerate the response.
 - **Turn Deletion** - `/delete N` removes turn N (user+assistant pair) from conversation
   memory and renumbers subsequent turns without changing the live workspace.
 - **Execution Interruption** - Pressing `Ctrl+C` mid-turn pauses tool execution, rolls
@@ -177,7 +181,7 @@ GLOBAL_HISTORIES_DIR=/path/to/global/histories
 ```
 
 **Required Services:**
- ________________________________________________________________________________________________
+
 | Service               | Function                                | URL                          |
 | :-------------------- | :---------------------------------------| :----------------------------|
 | NVIDIA NIM            | Default backend (Embeddings,OCR)        | build.nvidia.com             |
@@ -217,7 +221,7 @@ The sandbox container starts automatically when the `bash` group is enabled in `
 Enter messages directly into the terminal prompt.
 
 ### Commands
- _____________________________________________________________________________________
+
 | Command               | Action                                                      |
 | :-------------------- | :-----------------------------------------------------------|
 | `/tool`               | Select tool groups (`web`, `files`, `pdf`, `bash`).         |
@@ -368,7 +372,7 @@ removed, then run `/local` again in Emperor to reconnect and re-warm the cache.
 ## Project Structure
 
 ```text
-emperor/
+Xtream/
 ├── start.py                  # Entry point: Docker setup, CLI loop, command dispatch
 ├── config.py                 # Configuration, paths, model names, env vars
 ├── emperor_agent.py          # Core agent: generation loop, XML tool parser, history
@@ -388,23 +392,19 @@ emperor/
 ├── Dockerfile                # Sandbox container image
 ├── entrypoint.sh             # Container initialisation script
 ├── requirements.txt          # Python package dependencies
-├── .env.example              # Environment variable template
+├── .env.example               # Environment variable template
 └── .gitignore                # Excludes secrets and runtime data
 ```
 
 ## Design Decisions
 
-- **XML Tool Calling as Primary Format**: Tool calls are emitted as XML tags inside
-  normal text generation, so any model that can produce text can drive the tool loop.
-
-- **Codestral Embed for Semantic Code Search**: `workspace_search semantic=true`
-  chunks files at function/class boundaries (tree-sitter, regex fallback) and
-  embeds them with Mistral Codestral Embed. Index updates are incremental and
-  lazy — `bash`/`str_replace` only flip a stale flag; re-embed happens on the
-  next semantic query, and only for files whose MD5 changed. BM25 remains a
-  silent fallback if the Mistral key is missing or the API is unreachable.
-  Grep (`semantic=false`) is unchanged. Embeddings for PDFs and global history
-  still use NVIDIA Nemotron via the existing `_embed()` path.
+- **Incremental, Lazy Re-embedding for Code Search**: Re-indexing on every
+  edit would make every `bash` or `str_replace` call latency-bound by
+  embedding calls. Instead, edits only flip a stale flag; re-embedding
+  happens lazily on the next semantic query, and only for files whose MD5
+  actually changed. PDF and global-history embeddings are unaffected - they
+  still run through the existing NVIDIA Nemotron `_embed()` path, since
+  Codestral Embed is used for code only.
 
 - **Zip Archives for State Management**: Per-turn state is stored as a zip of the
   scratch directory plus a registry snapshot, rather than a git history. This avoids
@@ -416,9 +416,8 @@ emperor/
   commands are proxied through `docker exec`, giving full shell access inside an
   isolated container without affecting the terminal experience.
 
-- **Deterministic Tool Summarisation**: Summarising with another LLM call would add
-  latency and cost to every single turn. Since tool calls are structured data, a plain string-inspection pass (see Tool Summarisation above) is both
-  cheaper and more accurate to the ground truth.
+- **Deterministic Tool Summarisation**: Storing full tool use history will add context bloat to every subsequent turn. Since tool calls are structured data, a plain string-inspection pass (see Tool Summarisation above) is both
+  cheap & accurate to the ground truth.
 
 ## License
 
