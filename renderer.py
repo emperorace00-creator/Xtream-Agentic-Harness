@@ -679,6 +679,10 @@ def process_images_via_ocr(image_input: str, ocr_agent) -> str:
     ocr_agent: an ImageOCRAgent instance passed by the caller (start.py).
     The original file is never modified — only enhanced copies are used.
     """
+    # Bug #14 fix: track all temp image files created by enhancement/tiling
+    # and delete them when the OCR pass finishes, preventing scratch directory leak.
+    _temp_files = []
+    
     if not image_input:
         return ""
 
@@ -721,13 +725,15 @@ def process_images_via_ocr(image_input: str, ocr_agent) -> str:
 
             try:
                 _master = _build_master_enhanced(_item, _filename)
+                _temp_files.append(_master)
                 _tiles  = _slice_master_into_tiles(_master, _stem)
                 if _tiles:
-                    _tile_paths = [
-                        os.path.join(config.SCRATCH_DIR, d["filename"])
-                        for d in _tiles
-                        if os.path.isfile(os.path.join(config.SCRATCH_DIR, d["filename"]))
-                    ]
+                    _tile_paths = []
+                    for d in _tiles:
+                        _tp = os.path.join(config.SCRATCH_DIR, d["filename"])
+                        _temp_files.append(_tp)
+                        if os.path.isfile(_tp):
+                            _tile_paths.append(_tp)
                     if _tile_paths:
                         _ocr_input = " ".join(f'"{p}"' for p in _tile_paths)
                         _res = ocr_agent.process_image_group(_ocr_input)
@@ -742,6 +748,7 @@ def process_images_via_ocr(image_input: str, ocr_agent) -> str:
                 console.print(f"   [dim yellow]tiling failed ({_tile_err}) — using standard enhance[/dim yellow]")
                 try:
                     _enhanced = _copy_and_enhance(_item, _filename)
+                    _temp_files.append(_enhanced)
                     _res = ocr_agent.process_images(f'"{_enhanced}"')
                     ocr_results.extend(_res)
                 except Exception as _e:
@@ -759,6 +766,7 @@ def process_images_via_ocr(image_input: str, ocr_agent) -> str:
                         os.path.isfile(_item)):
                     try:
                         _enhanced_path = _copy_and_enhance(_item, Path(_item).name)
+                        _temp_files.append(_enhanced_path)
                         _enhanced_inputs.append(f'"{_enhanced_path}"')
                     except Exception:
                         _enhanced_inputs.append(f'"{_item}"')
@@ -790,6 +798,13 @@ def process_images_via_ocr(image_input: str, ocr_agent) -> str:
             f"{markdown}\n"
             f"---"
         )
+
+    for p in _temp_files:
+        try:
+            if os.path.isfile(p):
+                os.remove(p)
+        except Exception:
+            pass
 
     rule(style=SECTION)
     return "\n\n".join(prompt_blocks)
@@ -1178,6 +1193,7 @@ def prep_for_console(text: str) -> str:
         # ── Approximation with tilde ──────────────────────────────
         r'\infty':  '\u221e',  r'\partial': '\u2202',  r'\nabla': '\u2207',
         r'\iiint':  '\u222d',  r'\iint':    '\u222c',  r'\oint':  '\u222e',
+        r'\inf':     'inf',     r'\sup':     'sup',
         r'\int':    '\u222b',
         r'\notin':    '\u2209',  r'\in':       '\u2208',
         r'\nmid':     '\u2224',  r'\mid':      '\u2223',
@@ -1245,7 +1261,7 @@ def prep_for_console(text: str) -> str:
         r'\sin':     'sin',     r'\cos':     'cos',     r'\tan':     'tan',
         r'\cot':     'cot',     r'\sec':     'sec',     r'\csc':     'csc',
         r'\lim':     'lim',     r'\max':     'max',     r'\min':     'min',
-        r'\inf':     'inf',     r'\sup':     'sup',
+        # (moved to relations block)
         r'\det':     'det',     r'\log':     'log',     r'\ln':      'ln',
         r'\exp':     'exp',     r'\gcd':     'gcd',     r'\lcm':     'lcm',
         r'\Pr':      'Pr',      r'\Re':      'Re',      r'\Im':      'Im',
@@ -1265,7 +1281,11 @@ def prep_for_console(text: str) -> str:
     # Must run BEFORE _bare so \mu doesn't eat the 'lticolumn' prefix.
     text = re.sub(r'\\multicolumn\{[^{}]*\}\{[^{}]*\}\{([^{}]*)\}', r'\1', text)
 
-    for latex, uni in _bare.items():
+    # Bug #43 fix: sort by descending key length so longer (more-specific)
+    # macros like \infty always replace before their shorter prefixes like
+    # \inf, and \notin replaces before \in.  Dict insertion order is
+    # maintained in Python 3.7+ but doesn't guarantee longest-first.
+    for latex, uni in sorted(_bare.items(), key=lambda kv: len(kv[0]), reverse=True):
         text = text.replace(latex, uni)
 
     # ── 5-post. \mathbb catch-all (AFTER _bare so R→ℝ etc. fire first) ───────────
@@ -1305,7 +1325,7 @@ def prep_for_console(text: str) -> str:
 
     # ── 6b. Regular superscripts ──────────────────────────────────
     text = re.sub(
-        r'\^\{([0-9+\-=()a-zA-Z]+)\}|\^([0-9+\-=a-zA-Z]+)',
+        r'\^\{([0-9+\-=()a-zA-Z]+)\}|\^([+-]?\d+)',
         lambda m: (m.group(1) or m.group(2)).translate(sup_map),
         text,
     )

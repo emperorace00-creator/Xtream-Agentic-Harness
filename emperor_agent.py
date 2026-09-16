@@ -297,17 +297,21 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             # search_history (HISTORY_TOOLS_PROMPT) is baked only into
             # GROUP_PROMPTS["files"], matching GROUP_TOOLS["files"] — the tool
             # is advertised, and executable, only when 'files' is active.
+            # Bug #52 fix: track whether the date block has already been
+            # injected so 'web' + 'research' active together don't produce
+            # two identical REFERENCE DATE blocks.
+            _date_injected = False
             for group in ("web", "files", "pdf", "bash", "research"):  # deterministic order
                 if group not in self._active_groups:
                     continue
                 prompt += "\n\n" + GROUP_PROMPTS[group]
-                if group in ("web", "research"):
+                if group in ("web", "research") and not _date_injected:
                     # Computed fresh every call (not cached) — a long-running
                     # session needs today's actual date, not the date the
-                    # process started. Only injected when 'web' is active:
-                    # it exists to anchor from_date/"recent" reasoning for
-                    # quick_search, so it'd just be prompt noise otherwise.
+                    # process started. Only injected when 'web' or 'research'
+                    # is active; injected at most once per call.
                     prompt += "\n\n" + web_date_context()
+                    _date_injected = True
         return prompt
 
     @property
@@ -319,12 +323,15 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         prompt = _REVIEW_SYSTEM_PROMPT
         if self._active_groups:
             prompt += "\n\n" + PSEUDO_TOOL_FORMAT
+            # Bug #52 fix: inject date at most once.
+            _date_injected = False
             for group in ("web", "files", "pdf", "bash", "research"):  # deterministic order
                 if group not in self._active_groups:
                     continue
                 prompt += "\n\n" + GROUP_PROMPTS[group]
-                if group in ("web", "research"):
+                if group in ("web", "research") and not _date_injected:
                     prompt += "\n\n" + web_date_context()
+                    _date_injected = True
         return prompt
 
 
@@ -945,12 +952,17 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             # ingest_pdf is in SIMPLE_PARAM below (simple inner-text format)
             "search_history":             ["query", "top_k"],
             "search_semantic_scholar":    ["query", "limit", "year"],
+            # Bug #45 fix: url_search is self-closing in the documented/prompted
+            # format (<url_search url="..." context="..."/>) but if a model emits
+            # it as a block tag with named children, SIMPLE_PARAM would dump the
+            # entire raw inner XML into 'url'. Moving to STRUCTURED handles both.
+            "url_search":    ["url", "context"],
         }
 
         # Primary param for simple (inner-text) tools
         SIMPLE_PARAM = {
             "quick_search": "query",
-            "url_search":   "url",
+            # url_search moved to STRUCTURED (Bug #45 fix above)
             "bash":         "command",   # <bash>command here</bash>
             "ingest_pdf":   "filename",  # <ingest_pdf>paper.pdf</ingest_pdf>
             "ingest_chat":  "filename",  # <ingest_chat>gemini_chat.txt</ingest_chat>

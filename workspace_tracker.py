@@ -174,7 +174,14 @@ class WorkspaceTracker:
         self._registry_dirty = True
 
         # Update BM25 index (store full content — no token limit)
-        if _SEARCH_AVAILABLE and not is_duplicate and not rel_path.lower().endswith('.txt'):
+        # Bug #33 fix: only skip .txt files that have a paired .chunks.json sidecar
+        # (i.e. they're genuinely ingested PDFs covered by doc_search). A plain
+        # notes.txt or script.txt without a sidecar deserves BM25 coverage too.
+        _is_ingested_txt = (
+            rel_path.lower().endswith('.txt')
+            and os.path.exists(os.path.join(self.workspace_path, rel_path[:-4] + ".chunks.json"))
+        )
+        if _SEARCH_AVAILABLE and not is_duplicate and not _is_ingested_txt:
             self._bm25_index[rel_path] = content
             self._bm25_dirty = True
 
@@ -439,7 +446,9 @@ class WorkspaceTracker:
                 # Skip .txt files — these are ingested PDF documents, not code.
                 # doc_search (chunk embeddings) handles retrieval for those.
                 if rel_path.lower().endswith('.txt'):
-                    continue
+                    sidecar = os.path.join(self.workspace_path, rel_path[:-4] + ".chunks.json")
+                    if os.path.exists(sidecar):
+                        continue
                 full_path = os.path.join(self.workspace_path, rel_path)
                 try:
                     with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -523,8 +532,16 @@ class WorkspaceTracker:
 
         # Build ground truth: what's on disk
         on_disk = {}
+        on_disk_dirs = set()
         for root, dirs, files in os.walk(self.workspace_path):
             dirs[:] = [d for d in dirs if not d.startswith('.') and d not in EXCL_DIRS]
+            
+            # Bug 26 fix: track all visible directories to prune deleted ones from folder_registry
+            for d in dirs:
+                full_d = os.path.join(root, d)
+                rel_d = os.path.relpath(full_d, self.workspace_path).replace('\\', '/')
+                on_disk_dirs.add(rel_d)
+                
             for fn in files:
                 ext = os.path.splitext(fn)[1].lower()
                 if ext not in self._RECONCILE_EXTENSIONS:
@@ -570,7 +587,13 @@ class WorkspaceTracker:
                         # mtime + size match → treat as unchanged (MD5 check was too expensive per turn).
                         counts["unchanged"] += 1
 
-        if counts["added"] or counts["removed"] or counts["modified"]:
+        # Bug 26 fix: Phantom Deleted Folders Persist
+        stale_dirs = self.folder_registry - on_disk_dirs
+        if stale_dirs:
+            self.folder_registry -= stale_dirs
+            self._registry_dirty = True
+
+        if counts["added"] or counts["removed"] or counts["modified"] or stale_dirs:
             console.print(
                 f"[dim]Workspace reconciled — "
                 f"+{counts['added']} added, "

@@ -204,7 +204,7 @@ def edit_in_external_editor(old_content: str) -> str:
             tf.write(old_content)
             tmp_path = tf.name
 
-        result = subprocess.call([*editor_cmd, tmp_path], shell=True)
+        result = subprocess.call([*editor_cmd, tmp_path])
         if result != 0:
             console.print(f"[{WARN}]editor '{_esc(editor_raw)}' exited with code {result} — edit may be incomplete.[/{WARN}]")
 
@@ -417,6 +417,11 @@ def _run_turn(prompt_payload: str, images=None, uploaded_filenames=None,
                         # full snapshot replace.
                         if getattr(emperor, "code_search_agent", None):
                             emperor.code_search_agent.mark_stale()
+
+                        # Bug #37 fix: uploads cache may reference a PDF that was
+                        # ingested mid-turn and then reverted — clear it so the
+                        # model doesn't see a stale "ALREADY INGESTED" status.
+                        emperor._uploads_cache = None
 
                         shutil.copytree(backup_dir, config.SCRATCH_DIR, dirs_exist_ok=True)
                         emperor.workspace_tracker._ensure_index_loaded()
@@ -679,7 +684,7 @@ def cmd_tool():
     all_groups = ["web", "files", "pdf", "bash", "research"]
     descriptions = {
         "web":      "web      — quick_search, url_search",
-        "files":    "files    — view_lines, str_replace, workspace_search, search_history, ingest_chat",
+        "files":    "files    — view_lines, search_in_file, str_replace, workspace_search, search_history, ingest_chat",
         "pdf":      "pdf      — ingest_pdf, ingest_text, doc_search, view_lines",
         "bash":     "bash     — bash sandbox, show_image (requires Docker)",
         "research": "research — search_semantic_scholar (Semantic Scholar academic database)",
@@ -937,9 +942,11 @@ def cmd_rerun(user_text: str):
     if current > target:
         console.print(f"[{META}]  Turns T{target + 1}–T{current} will be kept in conversation memory.[/{META}]")
 
-    # Save tail turns before truncating so they can be re-appended after.
-    tail_history = emperor.chat_history[target * 2:]
-    tail_ledger  = [e for e in tsm._ledger if e.get("turn", 0) > target]
+    # Bug 17 fix: persist T{target} itself into the WAL alongside the tail,
+    # so a crash mid-regeneration can restore the original turn instead of
+    # leaving a gap.
+    tail_history = emperor.chat_history[(target - 1) * 2:]
+    tail_ledger  = [e for e in tsm._ledger if e.get("turn", 0) >= target]
 
     # ── Persist tail to WAL before truncating (crash recovery) ──────────────
     if tail_history:
@@ -950,8 +957,10 @@ def cmd_rerun(user_text: str):
     console.print(f"[{META}]truncating history to T{target - 1}...[/{META}]")
     console.print(tsm.truncate_history_only(target - 1, emperor, keep_tail=True))
 
-    # Delete only T{target}'s old archive — not the tail's.
-    tsm.delete_turn_archives(target)
+    # Bug #18 fix: DON'T delete T{target}'s archive here - it must
+    # survive until _run_turn completes successfully. Deletion is deferred
+    # to the success branch so a cancelled/failed rerun leaves the
+    # original turn's archive intact and /restore still works.
 
     rerun_filenames = [img["filename"] for img in rerun_images] if rerun_images else None
 
@@ -987,7 +996,11 @@ def cmd_rerun(user_text: str):
         _reappend_tail(tail_history, tail_ledger, target - 1, current)
         return
 
-    # Success: re-append tail after the newly generated T{target}.
+    # Success: the new T{target} is committed - now safe to delete the old archive.
+    # Bug #18 fix: deletion happens here (post-success), not before _run_turn.
+    tsm.delete_turn_archives(target)
+
+    # Re-append tail after the newly generated T{target}.
     _reappend_tail(tail_history, tail_ledger, target, current)
 
 
@@ -1156,6 +1169,12 @@ def cmd_edit(user_text: str):
             # has the marker baked in (it was the pre-filled editor text) —
             # strip it so _run_turn regenerates it correctly from the real images.
             new_content = re.sub(r'\n\[SYSTEM: Images attached.*?\]\s*$', '', new_content)
+            # Bug #19 fix: re-add the marker from the snapshot filenames so
+            # the stored message still references the images that were attached.
+            # Use U+2014 em-dash to match the regex in cmd_rerun's image marker.
+            if edit_images:
+                _snap_names = ', '.join(img['filename'] for img in edit_images)
+                new_content = f"{new_content}\n[SYSTEM: Images attached \u2014 {_snap_names}]"
 
     # ── In-place patch (both user and agent) ──────────────────────────────
     emperor.chat_history[msg_idx]["content"] = new_content

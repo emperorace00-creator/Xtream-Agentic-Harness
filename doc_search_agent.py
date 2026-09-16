@@ -101,6 +101,9 @@ def _chunk_text(text: str) -> list:
             overlap_len       = 0
             overlap_start_idx = len(window)
             for i in range(len(window) - 1, -1, -1):
+                if len(window[i][0]) >= config.EMBED_CHUNK_SIZE:
+                    overlap_start_idx = i + 1   # exclude the oversized paragraph from carry-forward
+                    break
                 overlap_len += len(window[i][0]) + 2
                 overlap_start_idx = i
                 if overlap_len >= config.EMBED_CHUNK_OVERLAP:
@@ -189,6 +192,18 @@ class DocSearchAgent:
         if not text.strip():
             return {"success": False, "error": "File is empty — nothing to embed."}
 
+        # Bug #21 fix: if the 'text' is actually an OCR error string rather
+        # than real document content, don't embed it — the error would become
+        # a searchable chunk that matches future doc_search queries falsely.
+        if text.strip().startswith("[OCR ERROR"):
+            return {"success": False, "error": f"OCR failed for this document — not embedded: {text[:120]}"}
+
+        # Bug #21 fix: if the 'text' is actually an OCR error string rather
+        # than real document content, don't embed it — the error would become
+        # a searchable chunk that matches future doc_search queries falsely.
+        if text.strip().startswith("[OCR ERROR"):
+            return {"success": False, "error": f"OCR failed for this document — not embedded: {text[:120]}"}
+
         # Chunk
         raw_chunks = _chunk_text(text)
         if not raw_chunks:
@@ -216,6 +231,20 @@ class DocSearchAgent:
                 "text":       chunk["text"],
                 "embedding":  emb,
             })
+
+        # Bug #20 fix: if any chunk failed to embed, abort — don't write
+        # source_hash to the sidecar. A partial index would block future re-ingest
+        # attempts (the hash-match skip guard says "already indexed") while silently
+        # returning fewer results than the document actually has.
+        failed_count = sum(1 for e in embeddings if e is None)
+        if failed_count:
+            return {
+                "success": False,
+                "error":   (
+                    f"{failed_count}/{len(embeddings)} chunk(s) failed to embed. "
+                    "Not saving partial index — retry ingest to try again."
+                ),
+            }
 
         # Save atomically: write to .tmp then replace, so a crash never leaves
         # a corrupt .chunks.json that causes doc_search to silently lose the document.
@@ -551,7 +580,14 @@ class PDFIngestAgent:
                 render_errs.append(e)
             finally:
                 doc.close()
-                render_q.put(None)   # sentinel
+                # Bug 7 fix: thread deadlock on sentinel put
+                while True:
+                    try:
+                        render_q.put(None, timeout=1.0)
+                        break
+                    except _q.Full:
+                        if cancel_event.is_set():
+                            break
 
         render_thread = _threading.Thread(target=_render_pages, daemon=True)
         render_thread.start()
@@ -568,11 +604,16 @@ class PDFIngestAgent:
             # MAX_CONCURRENCY. Spawning one thread per page wastes OS resources
             # on large PDFs without any throughput benefit.
             _max_workers = min(total_pages or 1, config.PDF_OCR_MAX_WORKERS)
+            # Bug 10 fix: bounding inflight tasks to prevent unbounded queue from 
+            # rendering all pages instantly, defeating RENDER_LOOKAHEAD limits.
+            inflight_sem = _threading.Semaphore(_max_workers + 2)
             with _cf.ThreadPoolExecutor(max_workers=_max_workers) as ocr_pool:
                 while True:
                     item = render_q.get()
                     if item is None:
                         break
+                    
+                    inflight_sem.acquire()
                     page_idx, img_path = item
                     # ── Apply IMAGE_TILING / IMAGE_ENHANCE (mirrors upload pipeline) ──
                     # All enhancement is done in the consumer thread (here) so the
@@ -585,6 +626,8 @@ class PDFIngestAgent:
                         fut = ocr_pool.submit(self.ocr.process_image_group, ocr_input)
                     else:
                         fut = ocr_pool.submit(self.ocr.process_images, ocr_input)
+                    
+                    fut.add_done_callback(lambda _: inflight_sem.release())
                     ocr_futures[page_idx] = fut
 
                 for page_idx in sorted(ocr_futures):
@@ -810,4 +853,4 @@ class PDFIngestAgent:
                     try:
                         os.remove(_f)
                     except Exception:
-                        pass
+                        pass

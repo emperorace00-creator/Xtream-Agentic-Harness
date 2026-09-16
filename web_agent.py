@@ -54,12 +54,14 @@ class ContentExtractor:
             for part in parts:
                 if re.match(r'^#{1,6}\s+', part):
                     current_header = part.strip()
-                elif part.strip() and current_header:
+                elif part.strip():
+                    # Bug 31 fix: treat pre-header text as its own section
+                    header = current_header or "Introduction"
                     sections.append({
                         'type': 'section',
-                        'header': current_header,
+                        'header': header,
                         'content': part.strip(),
-                        'priority': self._calc_priority(current_header, part)
+                        'priority': self._calc_priority(header, part)
                     })
             return sections
         except Exception:
@@ -464,8 +466,11 @@ class WebAgent:
         if len(final) > 21000:
             final = final[:21000] + "\n\n[SYSTEM: TRUNCATED — result exceeded 21,000 chars]"
 
-        self.cache[cache_key] = {"timestamp": time.time(), "content": final}
-        self._mark_cache_dirty()
+        # Bug #32 fix: don't cache empty results — a 30-day TTL on an empty
+        # string would lock in zero results for a month for the same query.
+        if final:
+            self.cache[cache_key] = {"timestamp": time.time(), "content": final}
+            self._mark_cache_dirty()
         # console.print(f"[dim]{final}[/dim]")  # debug: dumps full snippet content to console
         return final
 
@@ -513,8 +518,10 @@ class WebAgent:
 
         final = f"[SOURCE: {url}]\n\n{final}"
 
-        self.cache[cache_key] = {"timestamp": time.time(), "content": final}
-        self._mark_cache_dirty()
+        # Bug #32 fix: same guard for URL cache — don't cache empty page extractions.
+        if final:
+            self.cache[cache_key] = {"timestamp": time.time(), "content": final}
+            self._mark_cache_dirty()
         # console.print(f"[dim]{final}[/dim]")  # debug: dumps full extracted page content to console
         return final
 

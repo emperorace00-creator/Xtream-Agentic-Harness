@@ -92,7 +92,7 @@ GOOGLE_MODEL         = "gemini-3.5-flash-lite"
 GOOGLE_THINKING_TYPE = "native"
 GOOGLE_VISION        = True
 
-NIM_TEXT_MODEL    = "deepseek-ai/deepseek-v4-pro-0813"
+NIM_TEXT_MODEL    = "z-ai/glm-5.3"
 NIM_THINKING_TYPE = "native"
 NIM_VISION        = False   # set True when using a multimodal NIM model
 
@@ -203,11 +203,11 @@ MISTRAL_API_KEY_FILE          = os.environ.get("MISTRAL_API_KEY_FILE", "")
 # -- LIMITS & TUNING ----------------------------------------------------------
 EMPEROR_MAX_TOKENS  = 150000
 
-EMPEROR_STATEFUL_TEMP  = 1.025
+EMPEROR_STATEFUL_TEMP  = 1.0
 
 EMPEROR_STATEFUL_TOP_P  = 1.0
 
-EMPEROR_REVIEW_TEMP     = 1.025  # slightly higher entropy for self-critique turns
+EMPEROR_REVIEW_TEMP     = 1.05  # slightly higher entropy for self-critique turns
 
 RERANKER_MODEL              = "nvidia/llama-nemotron-rerank-vl-1b-v2"
 RERANKER_URL                = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking"
@@ -253,9 +253,19 @@ CODE_CHUNK_MAX_LINES     = 120    # cap per chunk (prevents giant classes becomi
 CODE_CHUNK_MIN_LINES     = 3      # discard trivially short chunks
 CODE_INDEX_EXTENSIONS    = {".py", ".js", ".ts", ".go", ".c", ".cpp", ".h", ".java",
                             ".rs", ".rb", ".php", ".sh", ".sql", ".md", ".txt",
-                            ".yaml", ".yml", ".toml", ".json", ".css", ".html"}
+                            ".yaml", ".yml", ".toml", ".json", ".css", ".html",
+                            # Bug #48 fix: add extensions already in _LANG_MAP/CODE_EXTENSIONS
+                            # that were missing here, causing semantic-index drift.
+                            ".jsx", ".tsx", ".cs", ".hpp"}
 CODE_INDEX_EXCLUDE       = {".env", ".gitignore"}     # never index these, regardless of extension
-CODE_INDEX_EXCLUDE_DIRS  = {".git", "__pycache__", "node_modules", ".venv", "venv"}
+# Bug #40 fix: expand exclude dirs to match utils.EXCL_DIRS fully — the
+# previous set was missing target/build/dist/env, causing compiled artifacts
+# and bundles to be sent to paid Codestral Embed.
+CODE_INDEX_EXCLUDE_DIRS  = {
+    ".git", "__pycache__", "node_modules", ".venv", "venv",
+    "target", "build", "dist", "env", ".mypy_cache", ".pytest_cache",
+    ".ruff_cache", ".tox", ".eggs", "*.egg-info",
+}
 
 # -- PDF OCR BATCHING ---------------------------------------------------------
 PDF_OCR_BATCH_SIZE  = 4        # pages per parallel OCR batch
@@ -329,10 +339,10 @@ def host_to_container_path(path: str) -> str:
         (UPLOADS_FOLDER, "/uploads"),
         (OUTPUTS_DIR,    "/outputs"),
     ]
-    normed = os.path.normpath(path)
+    normed = os.path.normcase(os.path.normpath(path))
     for h_prefix, c_prefix in _map:
-        h_normed = os.path.normpath(h_prefix)
+        h_normed = os.path.normcase(os.path.normpath(h_prefix))
         if normed == h_normed or normed.startswith(h_normed + os.sep):
-            rel = os.path.relpath(normed, h_normed).replace("\\", "/")
+            rel = os.path.relpath(path, h_prefix).replace("\\", "/")
             return f"{c_prefix}/{rel}" if rel != "." else c_prefix
     return path

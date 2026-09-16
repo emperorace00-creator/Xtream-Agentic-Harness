@@ -147,6 +147,15 @@ class TurnStateManager:
                     and not any(d.endswith(s) for s in EXCL_SUFFIXES)
                     and d not in EXCL_DIRS
                 ]
+                # Bug #24 fix: preserve empty directories in the zip archive so
+                # restoring a turn recreates them rather than dropping them.
+                if root != scratch and not files and not dirs:
+                    rel_dir = os.path.relpath(root, scratch).replace("\\", "/")
+                    try:
+                        zi = zipfile.ZipInfo(rel_dir + "/")
+                        zf.writestr(zi, "")
+                    except Exception:
+                        pass
                 for fname in files:
                     if any(fname.startswith(p) for p in EXCL_PREFIXES):
                         continue
@@ -158,11 +167,25 @@ class TurnStateManager:
                         pass  # skip locked / unreadable files silently
 
     def _scratch_size_mb(self) -> float:
-        """Return total size of config.SCRATCH_DIR in megabytes."""
+        """Return total size of config.SCRATCH_DIR in megabytes.
+
+        Bug #12 fix: prune the same excluded dirs/prefixes/suffixes as
+        _zip_scratch does, so node_modules / venv / .git don't inflate
+        the reported size and permanently disable backups.
+        """
         total = 0
         try:
-            for root, _, files in os.walk(config.SCRATCH_DIR):
+            for root, dirs, files in os.walk(config.SCRATCH_DIR):
+                # Mirror _zip_scratch exclusion logic
+                dirs[:] = [
+                    d for d in dirs
+                    if d not in EXCL_DIRS
+                    and not any(d.startswith(p) for p in EXCL_PREFIXES)
+                    and not any(d.endswith(s) for s in EXCL_SUFFIXES)
+                ]
                 for fn in files:
+                    if any(fn.startswith(p) for p in EXCL_PREFIXES):
+                        continue
                     try:
                         total += os.path.getsize(os.path.join(root, fn))
                     except OSError:
@@ -510,6 +533,15 @@ class TurnStateManager:
                 new_e = dict(entry)
                 new_e["turn"] = t - 1
 
+                # Bug #25 fix: adjust rerun_of alongside the turn number so
+                # the /turns display stays consistent after a delete.
+                if "rerun_of" in new_e:
+                    ro = new_e["rerun_of"]
+                    if ro == turn_num:
+                        del new_e["rerun_of"]   # original turn was deleted
+                    elif ro > turn_num:
+                        new_e["rerun_of"] = ro - 1
+
                 # Patch scratch_zip filename if it follows the standard pattern
                 old_zip = entry.get("scratch_zip")
                 if old_zip == f"turn_{t}_scratch.zip":
@@ -692,6 +724,11 @@ class TurnStateManager:
         if hasattr(agent, 'code_search_agent') and agent.code_search_agent:
             agent.code_search_agent.invalidate_index()
 
+        # Bug #37 fix: invalidate uploads cache so a PDF that was ingested
+        # before the restored turn doesn't show as "ALREADY INGESTED" if it
+        # no longer exists post-restore.
+        agent._uploads_cache = None
+
         # ── 3 & 4. Truncate agent memory + trim ledger ─────────────────────────
         # Factored into its own method so /rerun can call ONLY this part —
         # see truncate_history_only() below.
@@ -804,7 +841,7 @@ class TurnStateManager:
             uploads  = [_esc_markup(u) for u in entry.get("user_uploads",   [])]
             modified = [_esc_markup(m) for m in entry.get("model_modified", [])]
             outputs  = [_esc_markup(o) for o in entry.get("outputs_created", [])]
-            bash     = entry.get("model_bash", [])
+            bash     = [_esc_markup(b) for b in entry.get("model_bash", [])]
 
             # Revision markers — shown when turn was a rerun or from an edit
             rerun_of = entry.get("rerun_of")
@@ -862,6 +899,11 @@ class TurnStateManager:
         Wipe all backup archives and the ledger.
         Called by /reset to keep backups/ in sync with the cleared session.
         """
+        # Bug #23 fix: wait for every in-flight background zip thread to
+        # finish before deleting, so a just-committed turn's zip can't
+        # materialise after the clear and leave ghost archives.
+        for t in list(self._pending_zips.keys()):
+            self._await_zip(t, timeout=20.0)
         try:
             for item in os.listdir(config.BACKUPS_DIR):
                 if item == "turn_ledger.json" or (item.startswith("turn_") and (item.endswith(".zip") or item.endswith(".json"))):

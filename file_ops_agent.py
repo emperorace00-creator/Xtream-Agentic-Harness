@@ -77,7 +77,16 @@ class FileOpsAgent:
             dir_label = "[SCRATCH]" if s_dir == config.SCRATCH_DIR else "[UPLOADS]"
             
             # os.walk handles nested folders automatically
-            for root, _, files in os.walk(s_dir):
+            # Bug #13 fix: capture dirs and prune heavy/excluded subtrees
+            # (node_modules, .git, venv etc.) so grep can't flood context.
+            from utils import EXCL_DIRS, EXCL_PREFIXES, EXCL_SUFFIXES
+            for root, dirs, files in os.walk(s_dir):
+                dirs[:] = [
+                    d for d in dirs
+                    if d not in EXCL_DIRS
+                    and not any(d.startswith(p) for p in EXCL_PREFIXES)
+                    and not any(d.endswith(s) for s in EXCL_SUFFIXES)
+                ]
                 for filename in files:
                     if fnmatch.fnmatch(filename, pattern):
                         filepath = os.path.join(root, filename)

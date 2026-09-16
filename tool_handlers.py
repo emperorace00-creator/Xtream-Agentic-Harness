@@ -37,6 +37,9 @@ UPLOAD_EXTENSIONS = CODE_EXTENSIONS | {
     ".env",
     ".pdf",
     ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif", ".tiff", ".tif",
+    # Bug #48 fix: .svg already in IMAGE_PREVIEW_EXTENSIONS but was missing here,
+    # so uploaded SVGs never appeared in the [UPLOADS FOLDER] listing.
+    ".svg",
     ".csv", ".xml", ".xlsx", ".xls", ".parquet",
     ".zip", ".tar", ".gz",
 }
@@ -60,18 +63,20 @@ def _is_allowed_read_path(filepath: str) -> bool:
     return any(normed == prefix or normed.startswith(prefix + os.sep) for prefix in _ALLOWED_READ_PREFIXES)
 
 
-def _smart_truncate(text: str, max_chars: int = 8000, head: int = 3000) -> str:
+def _smart_truncate(text: str, max_chars: int = 8000, head: int = 3000,
+                    hint: str = "use view_lines for the full content") -> str:
     """Keep the first `head` chars and the last `(max_chars - head)` chars of text.
 
     The tail is where errors and summaries live (pytest failures, compile errors,
     script exit summaries). A plain head-only cut would silently discard them.
     A bridge line shows how many characters were omitted.
+    The optional `hint` lets callers provide context-appropriate recovery advice.
     """
     if len(text) <= max_chars:
         return text
     tail = max_chars - head
     omitted = len(text) - max_chars
-    bridge = f"\n[SYSTEM: {omitted:,} chars omitted — use view_lines for the full content] ...\n"
+    bridge = f"\n[SYSTEM: {omitted:,} chars omitted — {hint}] ...\n"
     return text[:head] + bridge + text[-tail:]
 
 
@@ -179,6 +184,9 @@ class ToolHandlersMixin:
         if not filename:
             return "[SYSTEM: ERROR] ingest_chat requires a filename, e.g. <ingest_chat>gemini_chat.txt</ingest_chat>"
 
+        # Bug #1 fix: strip any directory component to prevent os.path.join path traversal.
+        filename = os.path.basename(filename)
+
         ext = os.path.splitext(filename)[1].lower()
         if ext == '.pdf':
             return f"[SYSTEM: ERROR] '{filename}' is a PDF — use ingest_pdf for PDFs, not ingest_chat."
@@ -204,7 +212,9 @@ class ToolHandlersMixin:
         file_hash = hashlib.md5(raw_bytes).hexdigest()
 
         stem     = os.path.splitext(os.path.basename(filename))[0]
-        out_name = f"{stem}_imported.jsonl"
+        # Bug #22 fix: include the first 8 hex chars of the content hash
+        # so two different files with the same basename don't collide.
+        out_name = f"{stem}_{file_hash[:8]}_imported.jsonl"
         out_path = os.path.join(config.GLOBAL_HISTORIES_DIR, out_name)
         sidecar_path = out_path + ".import.json"
 
@@ -320,6 +330,9 @@ class ToolHandlersMixin:
         if not filename:
             return "[SYSTEM: ERROR] ingest_pdf requires a filename, e.g. <ingest_pdf>paper.pdf</ingest_pdf>"
 
+        # Bug #1 fix: strip any directory component to prevent os.path.join path traversal.
+        filename = os.path.basename(filename)
+
         if not filename.lower().endswith('.pdf'):
             return (
                 f"[ingest_pdf] '{filename}' is not a PDF. "
@@ -328,13 +341,18 @@ class ToolHandlersMixin:
             )
 
         # Resolve path inside /uploads
+        _uploads_abs = os.path.realpath(config.UPLOADS_FOLDER)
         pdf_path = os.path.join(config.UPLOADS_FOLDER, filename)
         if not os.path.exists(pdf_path):
-            # Fuzzy search — match by basename anywhere under /uploads
+            # Fuzzy search — match by basename anywhere under /uploads.
+            # Bug #1 fix: verify each candidate stays under UPLOADS_FOLDER
+            # via realpath to prevent symlink-based escapes.
             for root, _, files in os.walk(config.UPLOADS_FOLDER):
                 if filename in files:
-                    pdf_path = os.path.join(root, filename)
-                    break
+                    candidate = os.path.join(root, filename)
+                    if os.path.realpath(candidate).startswith(_uploads_abs):
+                        pdf_path = candidate
+                        break
             else:
                 return f"[SYSTEM: ERROR] '{filename}' not found in /uploads."
 
@@ -405,6 +423,9 @@ class ToolHandlersMixin:
         filename = (args.get('filename') or args.get('query') or '').strip()
         if not filename:
             return "[SYSTEM: ERROR] ingest_text requires a filename, e.g. <ingest_text>notes.txt</ingest_text>"
+
+        # Bug #1 fix: strip any directory component to prevent os.path.join path traversal.
+        filename = os.path.basename(filename)
 
         ext = os.path.splitext(filename)[1].lower()
         if ext == '.pdf':
@@ -518,6 +539,20 @@ class ToolHandlersMixin:
             if isinstance(result, dict) and result.get("success"):
                 if hasattr(self, 'code_search_agent') and self.code_search_agent:
                     self.code_search_agent.mark_stale()
+                # Bug #30 fix: if the edited file has a doc_search .chunks.json
+                # sidecar, delete it so doc_search doesn't return pre-edit passages.
+                # The model can re-run ingest_text/ingest_pdf to rebuild it.
+                _edited_abs = self.file_ops._resolve_path(filepath)
+                _sidecar = _edited_abs + ".chunks.json"
+                if os.path.isfile(_sidecar):
+                    try:
+                        os.remove(_sidecar)
+                        result["note"] = (
+                            f"Doc search index for '{os.path.basename(filepath)}' was invalidated "
+                            "(file edited). Re-run ingest_text/ingest_pdf to rebuild it."
+                        )
+                    except Exception:
+                        pass
             return json.dumps(result, indent=2)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
@@ -541,12 +576,23 @@ class ToolHandlersMixin:
                 "error": "show_image requires a filepath, e.g. <show_image>chart.png</show_image>"
             })
 
-        try:
-            full_path = self.file_ops._resolve_path(filepath)
-        except PermissionError as e:
-            return json.dumps({"success": False, "error": str(e)})
-        except Exception as e:
-            return json.dumps({"success": False, "error": f"Could not resolve path: {e}"})
+        # Bug #3 fix: handle /uploads paths before _resolve_path, which only
+        # allows scratch/outputs. show_image is read-only so /uploads is safe.
+        _host_path   = config.container_to_host_path(filepath)
+        _uploads_abs = os.path.realpath(config.UPLOADS_FOLDER)
+        _host_real   = os.path.realpath(_host_path) if os.path.exists(_host_path) else _host_path
+        _in_uploads  = (_host_real == _uploads_abs
+                        or _host_real.startswith(_uploads_abs + os.sep))
+
+        if _in_uploads:
+            full_path = _host_path
+        else:
+            try:
+                full_path = self.file_ops._resolve_path(filepath)
+            except PermissionError as e:
+                return json.dumps({"success": False, "error": str(e)})
+            except Exception as e:
+                return json.dumps({"success": False, "error": f"Could not resolve path: {e}"})
 
         if not os.path.isfile(full_path):
             return json.dumps({
@@ -569,7 +615,10 @@ class ToolHandlersMixin:
 
             os.makedirs(config.OUTPUTS_DIR, exist_ok=True)
             out_path = os.path.join(config.OUTPUTS_DIR, os.path.basename(full_path))
-            shutil.copy2(full_path, out_path)
+            # Bug #4 fix: skip copy when src and dst are the same file
+            # (e.g. the image is already in /outputs) to avoid SameFileError.
+            if not (os.path.exists(out_path) and os.path.samefile(full_path, out_path)):
+                shutil.copy2(full_path, out_path)
 
             # Track for the per-turn SYSTEM block written to chat_history
             _out_name = f"/outputs/{os.path.basename(full_path)}"
@@ -694,8 +743,12 @@ class ToolHandlersMixin:
             lines = ext_lines
             matches = []
             for i, line in enumerate(lines):
-                hit = (re.search(pattern, line) if use_regex
-                       else pattern.lower() in line.lower())
+                try:
+                    hit = (re.search(pattern, line) if use_regex
+                           else pattern.lower() in line.lower())
+                except re.error:
+                    # Bug #6 fix: invalid regex pattern - fall back to literal match
+                    hit = pattern in line
                 if hit:
                     s = max(0, i - ctx_lines)
                     e = min(len(lines), i + ctx_lines + 1)
@@ -902,12 +955,41 @@ class ToolHandlersMixin:
                 if os.path.isdir(mv_src) or '*' in mv_src or '?' in mv_src:
                     self.workspace_tracker.reconcile_workspace()
                 else:
-                    self.workspace_tracker.remove_file(mv_src)
-                    # When destination is a directory, the file lands at dst/basename(src)
                     final_dst = (
                         os.path.join(mv_dst, os.path.basename(mv_src))
                         if os.path.isdir(mv_dst) else mv_dst
                     )
+                    
+                    # Bug 29 fix: rename matching .chunks.json sidecar to preserve semantic search index
+                    sidecar_src = None
+                    if mv_src.lower().endswith('.txt'):
+                        sidecar_src = mv_src[:-4] + ".chunks.json"
+                    elif mv_src.lower().endswith('.md'):
+                        sidecar_src = mv_src[:-3] + ".chunks.json"
+                        
+                    if sidecar_src and os.path.isfile(sidecar_src):
+                        if final_dst.lower().endswith('.txt'):
+                            sidecar_dst = final_dst[:-4] + ".chunks.json"
+                        elif final_dst.lower().endswith('.md'):
+                            sidecar_dst = final_dst[:-3] + ".chunks.json"
+                        else:
+                            sidecar_dst = final_dst + ".chunks.json"
+                            
+                        try:
+                            import json
+                            with open(sidecar_src, 'r', encoding='utf-8') as sf:
+                                chunks_data = json.load(sf)
+                            chunks_list = chunks_data.get("chunks", []) if isinstance(chunks_data, dict) else chunks_data
+                            for chunk in chunks_list:
+                                if "source" in chunk:
+                                    chunk["source"] = final_dst
+                            with open(sidecar_dst, 'w', encoding='utf-8') as sf:
+                                json.dump(chunks_data, sf, indent=2)
+                            os.remove(sidecar_src)
+                        except Exception as _e:
+                            console.print(f"[yellow]⚠️ Failed to rename doc index sidecar: {_e}[/yellow]")
+
+                    self.workspace_tracker.remove_file(mv_src)
                     if os.path.isfile(final_dst):
                         with open(final_dst, "r", encoding="utf-8", errors="ignore") as f:
                             mv_content = f.read()
@@ -920,9 +1002,15 @@ class ToolHandlersMixin:
         stderr_full = "\n".join(stderr_lines)
 
         if len(stdout_full) > 8000:
-            stdout_full = _smart_truncate(stdout_full, max_chars=8000, head=3000)
+            stdout_full = _smart_truncate(
+                stdout_full, max_chars=8000, head=3000,
+                hint="redirect to a file (cmd > out.txt) and view_lines that, or narrow the command's output",
+            )
         if len(stderr_full) > 2000:
-            stderr_full = _smart_truncate(stderr_full, max_chars=2000, head=800)
+            stderr_full = _smart_truncate(
+                stderr_full, max_chars=2000, head=800,
+                hint="redirect stderr to a file (cmd 2> err.txt) and view_lines that, or narrow the command's output",
+            )
 
         exit_color = "green" if process.returncode == 0 else "red"
         console.print(f"[dim]└─ sandbox [{exit_color}]exit {process.returncode}[/{exit_color}] ───────────────────────────────────────────[/dim]")
@@ -961,7 +1049,22 @@ class ToolHandlersMixin:
             return "[UPLOADS FOLDER EMPTY]"
 
         try:
-            uploads_mtime = os.path.getmtime(config.UPLOADS_FOLDER)
+            # Bug 36 fix: aggregate signature to detect subdirectory additions/edits
+            def _uploads_signature(folder):
+                max_mtime = 0
+                count = 0
+                for root, _, files in os.walk(folder):
+                    for fn in files:
+                        try:
+                            mt = os.path.getmtime(os.path.join(root, fn))
+                            if mt > max_mtime:
+                                max_mtime = mt
+                            count += 1
+                        except OSError:
+                            pass
+                return (max_mtime, count)
+                
+            uploads_mtime = _uploads_signature(config.UPLOADS_FOLDER)
         except OSError:
             uploads_mtime = None
 

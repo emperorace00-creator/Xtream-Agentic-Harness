@@ -209,8 +209,13 @@ class SearchHistoryAgent:
             # Build passage text: "USER: ...\nASSISTANT: ..."
             # Truncate each half to 1000 chars so we stay under the
             # embedding model's 512-token limit (4 chars ≈ 1 token).
+            # Bug #28 fix: strip <think>/<reasoning> tags from the assistant
+            # text BEFORE truncating, so the 1000-char window captures the
+            # actual answer rather than just the reasoning trace (which can be
+            # several thousand chars long and would crowd out the real content).
+            from utils import extract_thinking_tags
             passages = [
-                f"USER: {u[:1000]}\nASSISTANT: {a[:1000]}"
+                f"USER: {u[:1000]}\nASSISTANT: {extract_thinking_tags(a)[1][:1000]}"
                 for u, a in new_turns
             ]
 

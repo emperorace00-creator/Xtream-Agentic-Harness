@@ -388,17 +388,15 @@ def chunk_code_file(filepath: str, rel_path: str) -> list:
     final_chunks: list = []
     for c in raw_chunks:
         n_lines = c.end_line - c.start_line + 1
-        if n_lines < config.CODE_CHUNK_MIN_LINES:
+        # Bug 38 fix: skip min-line filter for AST-derived chunks.
+        if not used_treesitter and n_lines < config.CODE_CHUNK_MIN_LINES:
             continue
         if n_lines <= config.CODE_CHUNK_MAX_LINES:
             final_chunks.append(c)
         else:
             final_chunks.extend(_split_oversized_chunk(c))
 
-    # Bug 4: tree-sitter yielded nodes, but ALL were under CODE_CHUNK_MIN_LINES
-    # (e.g. a file of 2-line helpers: def a(): return 1). The regex chunker
-    # merges consecutive small blocks into searchable windows \u2014 use it instead
-    # of leaving the file completely invisible to semantic search.
+    # The regex fallback is now only needed if tree-sitter yielded literally zero nodes at all.
     if not final_chunks and used_treesitter:
         for c in _chunk_via_regex(text, rel_path, language):
             n_lines = c.end_line - c.start_line + 1
@@ -435,6 +433,13 @@ def _should_index(filepath: str) -> bool:
     ext = os.path.splitext(basename)[1].lower()
     if ext not in config.CODE_INDEX_EXTENSIONS:
         return False
+    # Bug #35 fix: skip .txt files that have a doc_search .chunks.json sidecar
+    # (i.e. they're OCR'd PDF transcripts already indexed by Nemotron via
+    # doc_search). Re-indexing them via Codestral Embed wastes paid tokens and
+    # creates duplicate results. The shared helper is also used by Bug #33.
+    if ext == ".txt":
+        if os.path.exists(os.path.splitext(filepath)[0] + ".chunks.json"):
+            return False
     return True
 
 
@@ -443,6 +448,7 @@ def _iter_source_files(search_dirs: list) -> list:
     for indexable files. De-duplicates by container path so the same logical
     file is never indexed twice even if search_dirs overlap."""
     seen: set = set()
+    seen_hashes: set = set()
     results: list = []
     for base in search_dirs:
         if not os.path.isdir(base):
@@ -456,6 +462,16 @@ def _iter_source_files(search_dirs: list) -> list:
                 container_path = config.host_to_container_path(abs_path)
                 if container_path in seen:
                     continue
+                # Bug #34 fix: dedup by content hash so duplicate files across
+                # uploads/ and scratch/ don't waste tokens.
+                try:
+                    file_hash = _hash_file(abs_path)
+                except OSError:
+                    continue
+                if file_hash in seen_hashes:
+                    continue
+                seen_hashes.add(file_hash)
+                
                 seen.add(container_path)
                 results.append((abs_path, container_path))
     return results

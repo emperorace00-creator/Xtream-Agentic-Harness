@@ -333,6 +333,13 @@ class _CircuitBreaker:
                     f"   [green]✓ {self._name} circuit closed — provider recovered[/green]"
                 )
 
+    def record_inconclusive(self):
+        # Bug 8 fix: unlock the half_open slot without touching failure counters
+        with self._lock:
+            if self._state == "half_open":
+                self._state = "open"          # let the next call re-probe after cooldown
+                self._half_open_inflight = False
+
     def record_failure(self):
         with self._lock:
             if self._state == "half_open":
@@ -462,9 +469,17 @@ class ImageOCRAgent:
                 }
                 return
             markdown, used_model = self._call_with_rounds(image_url, label)
-            if not used_model.startswith("[ERROR"):
+            _is_error = used_model.startswith("[ERROR") or markdown.startswith("[OCR ERROR")
+            if not _is_error:
                 console.print(f"   ✅ [green]{label} OCR complete[/green] [dim]({used_model})[/dim]")
-            results[idx] = {"label": label, "source": display_source, "markdown": markdown}
+            # Bug #21 fix: set error=True on failed results so callers can
+            # skip embedding the error message as document content.
+            results[idx] = {
+                "label":    label,
+                "source":   display_source,
+                "markdown": markdown,
+                "error":    _is_error,
+            }
 
         # Spawn one thread per image — the _ConcurrencyGate throttles how many
         # actually make API calls at once, so we don't need to limit max_workers here.
@@ -478,6 +493,7 @@ class ImageOCRAgent:
     # ── Outer retry rounds wrapper ─────────────────────────────────────────────
 
     def _call_with_rounds(self, image_url: str, label: str) -> tuple:
+        self._last_failure_was_client_error = False
         """
         Outer loop: attempt the full provider dispatch (_call_with_fallback)
         up to MAX_ROUNDS times.
@@ -503,7 +519,10 @@ class ImageOCRAgent:
             result = self._call_with_fallback(image_url, label)
             if result is not None:
                 return result
-            # None → every available provider failed — outer loop sleeps and retries
+            # Bug 9 fix: if all failed and the cause was client-side, don't sleep
+            # and retry — it will fail again. Break immediately.
+            if getattr(self, "_last_failure_was_client_error", False):
+                break
 
         console.print(
             f"   🚨 [bold red]{label}: permanently failed after {MAX_ROUNDS} round(s).[/bold red]"
@@ -595,6 +614,10 @@ class ImageOCRAgent:
         )
         if not _is_client_error:
             breaker.record_failure()
+        else:
+            breaker.record_inconclusive()
+            # Bug 9 fix: communicate client error up to break out of rounds loop
+            self._last_failure_was_client_error = True
         return None
 
     # ── Single-round dispatch across providers ─────────────────────────────────
@@ -708,8 +731,17 @@ class ImageOCRAgent:
             # URLs.  Download the image and pass as inline bytes instead.
             try:
                 import urllib.request as _urllib_req
-                with _urllib_req.urlopen(image_url, timeout=15) as _r:
-                    _raw = _r.read()
+                # Bug #16 fix: plain urlopen sends 'Python-urllib/x.y' which
+                # Cloudflare, Imgur, Wikipedia etc. block with 403. Use a
+                # browser-style User-Agent to avoid the block.
+                _req = _urllib_req.Request(
+                    image_url,
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; ImageOCR/1.0)"},
+                )
+                with _urllib_req.urlopen(_req, timeout=15) as _r:
+                    _raw = _r.read(20 * 1024 * 1024 + 1)
+                if len(_raw) > 20 * 1024 * 1024:
+                    raise ValueError("Remote image exceeds 20 MB limit")
                 image_part = types.Part.from_bytes(
                     data=_raw, mime_type=mime_type_from_url(image_url)
                 )
@@ -835,8 +867,16 @@ class ImageOCRAgent:
                 # Bug 4: same fix as _call_google_ocr — download to bytes.
                 try:
                     import urllib.request as _urllib_req
-                    with _urllib_req.urlopen(image_url, timeout=15) as _r:
-                        _raw = _r.read()
+                    # Bug #16 + #15 fix: browser User-Agent to bypass CDN 403s;
+                    # 20 MB read cap to prevent OOM on unexpectedly large images.
+                    _req = _urllib_req.Request(
+                        image_url,
+                        headers={"User-Agent": "Mozilla/5.0 (compatible; ImageOCR/1.0)"},
+                    )
+                    with _urllib_req.urlopen(_req, timeout=15) as _r:
+                        _raw = _r.read(20 * 1024 * 1024 + 1)
+                    if len(_raw) > 20 * 1024 * 1024:
+                        raise ValueError("Remote image exceeds 20 MB limit")
                     parts.append(types.Part.from_bytes(
                         data=_raw, mime_type=mime_type_from_url(image_url)
                     ))
@@ -933,6 +973,10 @@ class ImageOCRAgent:
         )
         if not _is_client_error:
             breaker.record_failure()
+        else:
+            breaker.record_inconclusive()
+            # Bug 9 fix: communicate client error up to break out of rounds loop
+            self._last_failure_was_client_error = True
         return None
 
     def _call_with_fallback_group(self, image_urls: list, label: str) -> tuple | None:
@@ -953,6 +997,7 @@ class ImageOCRAgent:
         return None
 
     def _call_with_rounds_group(self, image_urls: list, label: str) -> tuple:
+        self._last_failure_was_client_error = False
         """
         Outer retry loop for multi-image group calls.
         Mirrors _call_with_rounds exactly — up to MAX_ROUNDS full attempts.
@@ -970,6 +1015,10 @@ class ImageOCRAgent:
             result = self._call_with_fallback_group(image_urls, label)
             if result is not None:
                 return result
+            # Bug 9 fix: if all failed and the cause was client-side, don't sleep
+            # and retry — it will fail again. Break immediately.
+            if getattr(self, "_last_failure_was_client_error", False):
+                break
 
         console.print(
             f"   🚨 [bold red]{label}: permanently failed after {MAX_ROUNDS} round(s).[/bold red]"

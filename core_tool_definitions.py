@@ -34,7 +34,7 @@ RULES:
   memory. Your own earlier power calls stay visible in this conversation's
   history even after a power is turned off, so seeing one you used before
   isn't proof it's still available now. (The user can turn availability of specific powers on or off between turns)
-- Don't mess up the syntax of powers, use only the syntax given below.
+- Don't mess up the syntax of powers, pay attention to the syntax given below.
 - If you want to use a power, the XML tag must appear in your actual response — not just in your thinking/reasoning trace. The runtime reads only your final response, not your thoughts.
 """
 

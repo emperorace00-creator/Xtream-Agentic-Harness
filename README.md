@@ -2,16 +2,15 @@
 
 ## TL;DR
 
-- **XML tool calling** - tools are invoked via XML tags so any text-generating model can drive the loop, no native function-calling support required
-- **Sandboxed code execution** - `<bash>` commands run inside an isolated Docker container; the CLI stays on the host
+- **XML tool calling** - tools are invoked via XML tags so its easy for any model to call tools
+- **Academic &  web search** - Linkup for live web search; Semantic Scholar for academic papers with TL;DR summaries and Open Access PDF links
 - **PDF & text RAG** - ingest PDFs or `.txt`/`.md` files, chunk + embed them, then search semantically via `<doc_search>`
-- **Web & academic search** - Linkup for live web search; Semantic Scholar for academic papers with TL;DR summaries and Open Access PDF links
+- **Semantic code search** - `workspace_search` with `semantic=true` embeds functions/classes (tree-sitter chunking) so model can query by concept.
 - **State rollback** - every turn is zip-archived; `/restore N` reverts the workspace and conversation to any of the last 20 turns
+- **Sandboxed code execution** - `<bash>` commands run inside an isolated Docker container; the CLI stays on the host
 - **Cross-session history** - every conversation is appended to a global JSONL archive, searchable via `<search_history>` using embeddings across all past sessions
 - **Auto tool-format correction** - a local ML classifier detects when a model hallucinates the wrong tool format and nudges it to retry correctly
 - **Image OCR & vision tiling** - dense images are tiled to capture fine detail
-- **BM25 workspace search** - instant, keyword search (better than grep) across your codebase with a code-aware tokenizer (splits `camelCase`, `snake_case`)
-- **Semantic code search** - `workspace_search` with `semantic=true` embeds functions/classes via Codestral Embed (tree-sitter chunking) so you can query by concept, not just tokens
 
 ---
 

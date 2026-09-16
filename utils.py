@@ -107,7 +107,9 @@ _LANG_MAP = {
     '.tsx': 'typescript',
     '.java': 'java',
     '.c': 'c',
+    '.h': 'c',
     '.cpp': 'cpp',
+    '.hpp': 'cpp',
     '.cs': 'csharp',
     '.go': 'go',
     '.rs': 'rust',
@@ -181,10 +183,14 @@ def extract_thinking_tags(text: str) -> tuple:
         return None, str(text or "")
 
     tag_pattern = re.compile(r"<(think|reasoning)>(.*?)</\1>", re.DOTALL | re.IGNORECASE)
-    think_match = tag_pattern.search(text)
+    # Bug #27 fix: use findall (all matches) instead of search (first only).
+    # If a model emits two <think>...</think> blocks, search() captured only the
+    # first while sub() stripped BOTH — the second block was deleted silently.
+    # findall returns a list of (tag_name, content) tuples.
+    matches = tag_pattern.findall(text)
 
-    if think_match:
-        thinking = think_match.group(2).strip()
+    if matches:
+        thinking = "\n\n---\n\n".join(m[1].strip() for m in matches)
         clean = tag_pattern.sub("", text).strip()
         return thinking, clean
 

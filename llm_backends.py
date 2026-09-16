@@ -118,8 +118,16 @@ class LLMBackendsMixin:
                             # HTTP URLs.  Download the image and pass as inline bytes instead.
                             try:
                                 import urllib.request as _urllib_req
-                                with _urllib_req.urlopen(src, timeout=15) as _r:
-                                    _raw = _r.read()
+                                # Bug 16 + 15 fix: browser User-Agent to bypass CDN 403s;
+                                # 20 MB read cap to prevent OOM on unexpectedly large images.
+                                _req = _urllib_req.Request(
+                                    src,
+                                    headers={"User-Agent": "Mozilla/5.0 (compatible; ImageOCR/1.0)"},
+                                )
+                                with _urllib_req.urlopen(_req, timeout=15) as _r:
+                                    _raw = _r.read(20 * 1024 * 1024 + 1)
+                                if len(_raw) > 20 * 1024 * 1024:
+                                    raise ValueError("Remote image exceeds 20 MB limit")
                                 parts.append(types.Part.from_bytes(
                                     data=_raw, mime_type=mime_type_from_url(src)
                                 ))
@@ -552,6 +560,7 @@ class LLMBackendsMixin:
         import re
         import uuid
         import json as _json
+        from core_tool_definitions import GROUP_TOOLS_UNION
 
         # Regex: match [SYSTEM — <label> result:]\n<content>
         # Captures everything between this header and the next result-block
@@ -567,8 +576,10 @@ class LLMBackendsMixin:
 
         # Regex: parse pseudo-XML self-closing tags from assistant content.
         # Matches <tool_name attr="val" .../> and <tool_name>...</tool_name>
+        # Bug 42 fix: Positional tag matching corrupts NIM history
+        _TOOL_ALT = "|".join(re.escape(name) for name in GROUP_TOOLS_UNION)
         _TAG_RE = re.compile(
-            r'<(\w+)([^>]*?)(?:/>|>(.*?)</\1>)',
+            rf'<({_TOOL_ALT})([^>]*?)(?:/>|>(.*?)</\1>)',
             re.DOTALL,
         )
         # Regex: parse attr="val" or attr='val' from a tag's attribute string
