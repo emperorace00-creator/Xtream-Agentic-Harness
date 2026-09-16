@@ -240,7 +240,7 @@ For regex patterns, set `regex=true`:
 
 <search_in_file>
 <file>/uploads/server.py</file>
-<pattern>def \w+_handler</pattern>
+<pattern>def \\w+_handler</pattern>
 <regex>true</regex>
 <max_results>5</max_results>
 </search_in_file>

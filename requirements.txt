@@ -19,3 +19,8 @@ prompt-toolkit>=3.0.0
 # Import is wrapped in a try/except in code_search_agent.py — if no wheel is
 # available for the running Python version, chunking falls back to regex.
 tree-sitter-language-pack
+
+# ML dependencies (used by train_alien_format_classifier.py)
+scikit-learn
+scipy
+joblib
