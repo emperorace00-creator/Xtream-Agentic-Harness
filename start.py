@@ -83,14 +83,14 @@ from renderer import (
 )
 from rich.markup import escape as _esc
 
-# ── Project / container identity ────────────────────────────────────────────────────
+# Project / container identity
 # Sourced from config.py to avoid symlink-related divergence.
 _PROJECT_DIR  = config.WORKSPACE_ROOT
 _PROJECT_NAME = Path(_PROJECT_DIR).name
 _CONTAINER    = config.CONTAINER_NAME
 _IMAGE_NAME   = "emperor-base:latest"
 
-# ── /reset cleanup patterns (item 20 / SP-2) ────────────────────────────────────────
+# /reset cleanup patterns (item 20 / SP-2)
 # Previously /reset only removed top-level *.json files from database/, one by one
 # with os.remove(). That missed:
 #   - bm25_corpus.pkl        (workspace_tracker's BM25 index cache)
@@ -102,9 +102,9 @@ _IMAGE_NAME   = "emperor-base:latest"
 _RESET_PATTERNS = ["*.json", "*.pkl", "*.tmp"]
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # DOCKER SANDBOX SETUP  (non-fatal)
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def _setup_sandbox() -> bool:
     """
@@ -248,7 +248,7 @@ def _save_partial_history(agent, prompt_payload):
         console.print(f"[{WARN}]partial history save error: {_esc(str(e))}[/{WARN}]")
 
 
-# ========== INITIALIZATION ==========
+# ---- Initialization ----
 
 image_ocr     = ImageOCRAgent()
 web_agent     = WebAgent()
@@ -281,9 +281,9 @@ def _save_rerun_tail(target: int, current: int,
         )
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # GENERATION HELPER  - shared by normal turns, /rerun, and /edit user
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def _run_turn(prompt_payload: str, images=None, uploaded_filenames=None,
               prompt_preview: str = None, rerun_of: int = None, edited: bool = False):
@@ -306,7 +306,7 @@ def _run_turn(prompt_payload: str, images=None, uploaded_filenames=None,
     """
     uploaded_filenames = uploaded_filenames or []
 
-    # ── Turn Setup & Rollback Backup ──────────────────────────────────────
+    # Turn Setup & Rollback Backup
     # Backup is now created lazily, on the first actual tool call, not
     # eagerly here before every tool-mode turn (item 4 / SP-1). We just
     # reset the per-turn flags; emperor._start_scratch_backup() (triggered
@@ -323,7 +323,7 @@ def _run_turn(prompt_payload: str, images=None, uploaded_filenames=None,
         emperor._backup_success = False
         emperor._backup_thread  = None
 
-    # ── Generate ──────────────────────────────────────────────────────────
+    # Generate
     raw_response = None
     while True:
         try:
@@ -364,7 +364,7 @@ def _run_turn(prompt_payload: str, images=None, uploaded_filenames=None,
                 emperor._partial_messages = None
                 cancelled = True
 
-                # ── Rollback workspace changes ──
+                # Rollback workspace changes
                 # A backup only exists if a tool was actually called this turn
                 # (lazy backup - item 4). If it's still copying in the
                 # background, give it a moment to finish before deciding.
@@ -457,7 +457,7 @@ def _run_turn(prompt_payload: str, images=None, uploaded_filenames=None,
     if cancelled:
         return None
 
-    # ── Save history ──────────────────────────────────────────────────────
+    # Save history
     turn_num = len(emperor.chat_history) // 2 + 1
     try:
         # Use prompt_preview (raw user_text) as the history base so that
@@ -494,7 +494,7 @@ def _run_turn(prompt_payload: str, images=None, uploaded_filenames=None,
     except Exception as e:
         console.print(f"[{WARN}]history save error: {_esc(str(e))}[/{WARN}]")
 
-    # ── Per-turn backup ───────────────────────────────────────────────────
+    # Per-turn backup
     # NOTE: this used to check `"tool" in emperor._active_groups`, but
     # _active_groups only ever holds {"web","files","pdf","bash"} - "tool" is
     # never a member, so this branch was silently dead and every turn fell
@@ -563,9 +563,9 @@ def get_bottom_toolbar():
     return HTML(f'<style bg="ansiblack" fg="ansiwhite"> {tool_str}{context_str} </style>')
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # SLASH COMMANDS
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # Each command below is a small, self-contained function operating on the
 # module-level singletons (emperor, tsm, web_agent, image_ocr) - the same
 # convention _run_turn() above already uses. Splitting these out of the old
@@ -585,26 +585,27 @@ def _reappend_tail(tail_history: list, tail_ledger: list, target: int, current: 
     T{target}. Previously copy-pasted identically at the end of both
     cmd_rerun() and cmd_edit(); now shared.
     """
-    if not tail_history:
-        return
-    emperor.chat_history.extend(tail_history)
-    # Partial 2 fix: tail_ledger is a pre-truncation SNAPSHOT captured by the
-    # caller before truncate_history_only(..., keep_tail=True) ran - and that
-    # call deliberately does NOT prune _ledger for keep_tail=True (see its
-    # docstring), so entries for turns target+1..current are still sitting in
-    # tsm._ledger the whole time this function's caller is running. Blindly
-    # extending with tail_ledger therefore re-adds the SAME entries a second
-    # time. Filter out anything whose turn number is already present before
-    # extending, making this function safe to call from both the success and
-    # cancel/failure paths without duplicating ledger entries.
-    existing_turns     = {e.get("turn") for e in tsm._ledger}
-    new_ledger_entries = [e for e in tail_ledger if e.get("turn") not in existing_turns]
-    tsm._ledger.extend(new_ledger_entries)
-    tsm._ledger.sort(key=lambda e: e.get("turn", 0))
-    tsm._save_ledger()
-    emperor.save_history(skip_global=True)
-    console.print(f"[{META}]✓ T{target + 1}–T{current} conversation tail preserved.[/{META}]")
-    # Clean up the WAL file now that the tail is safely on disk.
+    if tail_history:
+        emperor.chat_history.extend(tail_history)
+        # Partial 2 fix: tail_ledger is a pre-truncation SNAPSHOT captured by the
+        # caller before truncate_history_only(..., keep_tail=True) ran - and that
+        # call deliberately does NOT prune _ledger for keep_tail=True (see its
+        # docstring), so entries for turns target+1..current are still sitting in
+        # tsm._ledger the whole time this function's caller is running. Blindly
+        # extending with tail_ledger therefore re-adds the SAME entries a second
+        # time. Filter out anything whose turn number is already present before
+        # extending, making this function safe to call from both the success and
+        # cancel/failure paths without duplicating ledger entries.
+        existing_turns     = {e.get("turn") for e in tsm._ledger}
+        new_ledger_entries = [e for e in tail_ledger if e.get("turn") not in existing_turns]
+        if new_ledger_entries:
+            tsm._ledger.extend(new_ledger_entries)
+            tsm._ledger.sort(key=lambda e: e.get("turn", 0))
+            tsm._save_ledger()
+        emperor.save_history(skip_global=True)
+        console.print(f"[{META}]✓ T{target + 1}–T{current} conversation tail preserved.[/{META}]")
+        
+    # Clean up the WAL file now that the tail is safely on disk (or there was no tail).
     try:
         if os.path.exists(_RERUN_TAIL_FILE):
             os.remove(_RERUN_TAIL_FILE)
@@ -853,7 +854,7 @@ def cmd_restore(user_text: str):
         console.print(f"[{WARN}]T{target} is the current or future turn. Only past turns can be restored.[/{WARN}]")
         return
 
-    # ── Inform user what will change ────────────────────────────────────
+    # Inform user what will change
     console.print()
     console.print(f"[{WARN}]⚠  Restore to end of T{target}[/{WARN}]")
     console.print(f"[{META}]   scratch/ will revert to its T{target} state.[/{META}]")
@@ -908,8 +909,8 @@ def cmd_rerun(user_text: str):
     user_idx        = (target - 1) * 2
     original_prompt = _flatten_content(emperor.chat_history[user_idx].get("content", ""))
 
-    # ── Images: hard-stop if T{target} had images but they're not
-    # reloadable, rather than silently proceeding text-only. ────────
+    # Images: hard-stop if T{target} had images but they're not
+    # reloadable, rather than silently proceeding text-only.
     # Bug 16: use ledger images_snap field instead of substring prompt check
     # so a user prompt mentioning the marker string can't spoof this guard.
     _rerun_entry = next((e for e in tsm._ledger if e.get("turn") == target), None)
@@ -948,7 +949,7 @@ def cmd_rerun(user_text: str):
     tail_history = emperor.chat_history[(target - 1) * 2:]
     tail_ledger  = [e for e in tsm._ledger if e.get("turn", 0) >= target]
 
-    # ── Persist tail to WAL before truncating (crash recovery) ──────────────
+    # Persist tail to WAL before truncating (crash recovery)
     if tail_history:
         _save_rerun_tail(target, current, tail_history, tail_ledger)
 
@@ -1001,7 +1002,9 @@ def cmd_rerun(user_text: str):
     tsm.delete_turn_archives(target)
 
     # Re-append tail after the newly generated T{target}.
-    _reappend_tail(tail_history, tail_ledger, target, current)
+    # Slice the old target turn off both the history and ledger so we don't
+    # append it immediately after the new target turn.
+    _reappend_tail(tail_history[2:], [e for e in tail_ledger if e.get("turn") != target], target, current)
 
 
 def cmd_delete(user_text: str):
@@ -1039,7 +1042,7 @@ def cmd_delete(user_text: str):
         os.path.exists(os.path.join(config.BACKUPS_DIR, del_entry["scratch_zip"]))
     )
 
-    # ── Show what will happen ───────────────────────────────────────────
+    # Show what will happen
     console.print()
     console.print(f"[{WARN}]⚠  Delete T{target}[/{WARN}]")
     console.print(
@@ -1146,9 +1149,9 @@ def cmd_edit(user_text: str):
         console.print(f"[{META}]No changes made — edit cancelled.[/{META}]\n")
         return
 
-    # ── Images: same hard-stop pattern as /rerun. Only relevant for
+    # Images: same hard-stop pattern as /rerun. Only relevant for
     # user edits - an agent edit doesn't regenerate anything, so
-    # nothing gets resent and there's no image to preserve. ────────
+    # nothing gets resent and there's no image to preserve.
     edit_images = None
     if role == "user":
         # Bug 16: use ledger images_snap instead of substring prompt check.
@@ -1176,7 +1179,7 @@ def cmd_edit(user_text: str):
                 _snap_names = ', '.join(img['filename'] for img in edit_images)
                 new_content = f"{new_content}\n[SYSTEM: Images attached \u2014 {_snap_names}]"
 
-    # ── In-place patch (both user and agent) ──────────────────────────────
+    # In-place patch (both user and agent)
     emperor.chat_history[msg_idx]["content"] = new_content
     emperor.save_history(skip_global=True)
     emperor.last_tool_summary = ""
@@ -1233,7 +1236,7 @@ def _dispatch_command(user_text: str):
     return None
 
 
-# ── Startup header ────────────────────────────────────────────────────────────
+# Startup header
 rule()
 _backend_label = config.ACTIVE_BACKEND
 _model_label   = config.get_active_model().split("/")[-1]
@@ -1247,7 +1250,7 @@ console.print(
 rule(style=RULE_STYLE)
 console.print()
 
-# ── Rerun WAL crash recovery ────────────────────────────────────────────────
+# Rerun WAL crash recovery
 # If the process was killed mid-rerun (after truncate, before _reappend_tail),
 # the tail is on disk in _RERUN_TAIL_FILE. Auto-recover it now.
 if os.path.exists(_RERUN_TAIL_FILE):
@@ -1264,6 +1267,13 @@ if os.path.exists(_RERUN_TAIL_FILE):
                 f"before T{_w_target + 1 if isinstance(_w_target, int) else '?'}–T{_w_current} "
                 f"were reappended. Auto-recovering {len(_w_th) // 2} tail turn(s)...[/{WARN}]"
             )
+            
+            # If the crash happened after the regenerated turn was committed to history,
+            # slice the old target turn off the tail to prevent duplication.
+            if isinstance(_w_target, int) and len(emperor.chat_history) >= _w_target * 2:
+                _w_th = _w_th[2:]
+                _w_tl = [e for e in _w_tl if e.get("turn") != _w_target]
+                
             _reappend_tail(_w_th, _w_tl,
                            _w_target if isinstance(_w_target, int) else 0,
                            _w_current if isinstance(_w_current, int) else 0)
@@ -1276,7 +1286,7 @@ if os.path.exists(_RERUN_TAIL_FILE):
         except Exception:
             pass
 
-# ========== MAIN LOOP ==========
+# ---- Main loop ----
 
 while True:
     try:
@@ -1295,7 +1305,7 @@ while True:
         if user_text.lower() == "exit":
             break
 
-        # ── Slash-command dispatch ──────────────────────────────────────────
+        # Slash-command dispatch
         # Each command owns real function scope now, and a failure inside one
         # is reported against that command specifically instead of a single
         # generic "error: {e}" shared by all nine branches.
@@ -1307,7 +1317,7 @@ while True:
                 console.print(f"[{ERR}]error in {_esc(user_text.split()[0])}: {_esc(str(e))}[/{ERR}]")
             continue
 
-        # ── Image handling ────────────────────────────────────────────────────
+        # Image handling
         image_input = console.input(f"[{META}] images (path/url or enter to skip): [/{META}]").strip()
         images      = []   # for direct vision path
         ocr_text    = ""   # for OCR fallback path
@@ -1329,13 +1339,13 @@ while True:
                 console.print(f"[{META}]  model has no vision — routing through OCR pipeline (NIM)...[/{META}]")
                 ocr_text = process_images_via_ocr(image_input, image_ocr)
 
-        # ── Build prompt ──────────────────────────────────────────────────────
+        # Build prompt
         if ocr_text:
             prompt_payload = f"{user_text}\n\n[IMAGE OCR CONTENT]\n{ocr_text}"
         else:
             prompt_payload = user_text
 
-        # ── Normal turn ───────────────────────────────────────────────────────
+        # Normal turn
         # Pass user_text as prompt_preview so the ledger always shows the raw
         # question even when prompt_payload has been expanded with OCR content.
         _run_turn(prompt_payload, images=images, uploaded_filenames=uploaded_filenames,

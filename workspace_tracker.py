@@ -18,9 +18,9 @@ except ImportError:
     console.print("⚠️  [yellow]rank-bm25 not found — semantic search disabled. Run: pip install rank-bm25[/yellow]")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # CODE-AWARE TOKENIZER
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def _code_tokenizer(text: str) -> list:
     """
@@ -83,9 +83,9 @@ class WorkspaceTracker:
         )
 
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # FILE & FOLDER TRACKING
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def _is_project_file(self, filepath: str) -> bool:
         """Return False for system-generated temp files (task_XXXXXXXX.py/.sh)."""
@@ -231,9 +231,9 @@ class WorkspaceTracker:
             console.print(f"[dim]Untracked: {rel_path}[/dim]")
 
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # WORKSPACE SUMMARY & TREE
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def get_workspace_summary(self, max_files: int = 20) -> str:
         """Get workspace summary with folder tree and recent files."""
@@ -305,9 +305,9 @@ class WorkspaceTracker:
         add_tree_node(path_parts_list)
         return "\n".join(tree_lines) + "\n"
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # BM25 SEMANTIC SEARCH
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def semantic_search(self, query: str, top_k: int = 5, min_score: float = 0.01,
                          file_filter: str = None) -> list:
@@ -504,9 +504,9 @@ class WorkspaceTracker:
             console.print(f"⚠️  [yellow]BM25 rebuild failed: {e}[/yellow]")
             self._bm25_model = None
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # FILESYSTEM RECONCILER
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     # Built on top of the shared utils.CODE_EXTENSIONS base (also used by
     # tool_handlers.UPLOAD_EXTENSIONS) plus ".env", which reconcile treats as
@@ -623,9 +623,9 @@ class WorkspaceTracker:
 
         self.track_file_write(full, content)
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # RESET & PERSISTENCE
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def invalidate_bm25_cache(self):
         """

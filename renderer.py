@@ -16,10 +16,10 @@ import importlib.util
 import config
 from utils import MIME_MAP, auto_enhance, console
 
-# ── LaTeX converter ──────────────────────────────────────────────────────────
+# LaTeX converter
 _latex_converter = LatexNodes2Text()
 
-# ── LaTeX pre-processing, BEFORE pylatexenc ever sees the string ──────────────
+# LaTeX pre-processing, BEFORE pylatexenc ever sees the string
 # pylatexenc's LatexNodes2Text silently DISCARDS macros it doesn't recognize
 # (rather than leaving them as literal text) - and since this runs before the
 # _bare fallback dict below, anything dropped here never gets a second chance.
@@ -52,7 +52,7 @@ _PRE_LATEX_MACRO_FIXUPS = {
 }
 
 
-# ── Digit maps for compound fraction exponents ───────────────────────────────
+# Digit maps for compound fraction exponents
 # Module-level so _apply_pre_latex_fixups (math-block path) and the bare
 # processing path in prep_for_console can both use them without import cycles.
 _SUP_DIGIT = str.maketrans('0123456789', '\u2070\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079')
@@ -83,7 +83,7 @@ def _apply_pre_latex_fixups(latex_src: str) -> str:
     converts the most common dropped macros to safe equivalents so they
     survive the pylatexenc pass.
     """
-    # ── Modular arithmetic, binomials, boxed elements --------------
+    # Modular arithmetic, binomials, boxed elements --------------
     latex_src = re.sub(r'\\pmod\{([^{}]*)\}', r' (mod \1)', latex_src)
     latex_src = re.sub(r'\\pod\{([^{}]*)\}', r' (\1)', latex_src)
     latex_src = re.sub(r'\\[dt]?binom\{([^{}]*)\}\{([^{}]*)\}', r'C(\1,\2)', latex_src)
@@ -92,7 +92,7 @@ def _apply_pre_latex_fixups(latex_src: str) -> str:
     for macro, replacement in _PRE_LATEX_MACRO_FIXUPS.items():
         latex_src = latex_src.replace(macro, replacement)
 
-    # ── Ensure spaces around math functions -───────────────────────
+    # Ensure spaces around math functions -
     # Prevents pylatexenc from fusing subscripts and functions (e.g. T_1\sin → T_1sin),
     # which would cause the bare subscript converter to mangle "1sin" into "₁ₛᵢₙ".
     latex_src = re.sub(
@@ -100,7 +100,7 @@ def _apply_pre_latex_fixups(latex_src: str) -> str:
         r' \1 ', latex_src
     )
 
-    # ── Extensible named arrows -----------------────────------
+    # Extensible named arrows ----
     # pylatexenc silently drops \xrightarrow / \xleftarrow (not in its table).
     # Convert here so the arrow survives. Use PARENS not brackets - Rich would
     # misparse [label] as a markup tag in the rendered output.
@@ -114,12 +114,12 @@ def _apply_pre_latex_fixups(latex_src: str) -> str:
     latex_src = re.sub(r'\\underset\{([^}]*)\}\{([^}]*)\}',
                        r'\2_{\1}', latex_src)
 
-    # ── Compound fraction exponents: ^{3/2} ---------------------
+    # Compound fraction exponents: ^{3/2} ---------------------
     # Must run BEFORE _wrap_frac_args_in_parens so the exponent is already
     # clean Unicode when pylatexenc receives the wrapped expression.
     latex_src = re.sub(r'\^\{(\d+)/(\d+)\}', _fmt_frac_exp, latex_src)
 
-    # ── Normalise display/text/continued fraction variants ───────────────────
+    # Normalise display/text/continued fraction variants
     # pylatexenc silently swallows \dfrac, \tfrac, \cfrac (not in its table).
     # Normalise to \frac first so pylatexenc can process them correctly.
     latex_src = latex_src.replace(r'\dfrac', r'\frac')
@@ -194,7 +194,7 @@ def _wrap_frac_args_in_parens(latex_src: str) -> str:
         i = pos_after_den
     return ''.join(out)
 
-# ── Consistent style constants ───────────────────────────────────────────────
+# Consistent style constants
 RULE_STYLE = "dim"
 ACCENT     = "bold white"
 META       = "dim"
@@ -203,9 +203,9 @@ ERR        = "bold red"
 SECTION    = "dim cyan"
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # DISPLAY HELPERS
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def rule(label: str = "", style: str = RULE_STYLE):
     """Horizontal rule, expands to terminal width."""
@@ -257,9 +257,9 @@ def show_image_in_terminal(image_path: str):
             pass
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # IMAGE LOADING & ENHANCEMENT
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def _copy_and_enhance(item_path: str, filename: str) -> str:
     """
@@ -298,13 +298,13 @@ def _build_master_enhanced(item_path: str, filename: str) -> str:
     master_path = os.path.join(config.SCRATCH_DIR, f"master_{filename}")
     shutil.copy2(item_path, master_path)
 
-    # ── Fast path: IMAGE_ENHANCE=False → skip cv2 pipeline, PIL only ─────────
+    # Fast path: IMAGE_ENHANCE=False → skip cv2 pipeline, PIL only
     if not getattr(config, "IMAGE_ENHANCE", True):
         auto_enhance(master_path)   # PIL: saturation-guarded inversion + contrast
         console.print(f"   [dim]master_enhance: PIL-only mode (IMAGE_ENHANCE=False)[/dim]")
         return master_path
 
-    # ── Step 0a: EXIF orientation fix (via Pillow) ────────────────────────────
+    # Step 0a: EXIF orientation fix (via Pillow)
     # Phone cameras embed rotation in EXIF; cv2.imread ignores it, so a
     # sideways photo would be processed rotated. Pillow reads the tag and
     # applies the physical rotation before we hand the file to cv2.
@@ -342,7 +342,7 @@ def _build_master_enhanced(item_path: str, filename: str) -> str:
         if img is None:
             return master_path
 
-        # ── Step 0b: Smart margin trimming ────────────────────────────────────
+        # Step 0b: Smart margin trimming
         # Detects the bounding box of actual page content (ink, lines) and
         # crops away surrounding clutter (thumb, carpet, table surface).
         # Safety margin: we keep 92 % of the detected box to avoid clipping
@@ -378,7 +378,7 @@ def _build_master_enhanced(item_path: str, filename: str) -> str:
         except Exception:
             pass   # silently skip on any contour failure
 
-        # ── 1. Saturation-guarded inversion ───────────────────────────────────
+        # 1. Saturation-guarded inversion
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         avg_v = float(hsv[:, :, 2].mean())   # brightness  0-255
         avg_s = float(hsv[:, :, 1].mean())   # saturation  0-255
@@ -386,7 +386,7 @@ def _build_master_enhanced(item_path: str, filename: str) -> str:
             img = 255 - img
             console.print(f"   [dim cyan]master_enhance: inverted (dark+greyscale)[/dim cyan]")
 
-        # ── 2. Smart resize to 512–1536 px range ──────────────────────────────
+        # 2. Smart resize to 512–1536 px range
         h, w = img.shape[:2]
         scale = 1.0
         if max(h, w) > 1536:
@@ -398,7 +398,7 @@ def _build_master_enhanced(item_path: str, filename: str) -> str:
             img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
             console.print(f"   [dim cyan]master_enhance: resized {w}×{h} → {new_w}×{new_h}[/dim cyan]")
 
-        # ── 3. LAB-space CLAHE with bleed-through suppression ─────────────────
+        # 3. LAB-space CLAHE with bleed-through suppression
         lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
         l_ch, a_ch, b_ch = cv2.split(lab)
 
@@ -431,7 +431,7 @@ def _build_master_enhanced(item_path: str, filename: str) -> str:
         l_ch = clahe.apply(l_ch)
         img = cv2.cvtColor(cv2.merge((l_ch, a_ch, b_ch)), cv2.COLOR_LAB2BGR)
 
-        # ── 4. Unsharp mask (stronger for document crispness) ─────────────────
+        # 4. Unsharp mask (stronger for document crispness)
         # Weights (1.8, -0.8): output = img + 0.8 × high-freq detail.
         # Gives ink a sharp, dark bite - equivalent to bold ink - without
         # the stroke-merging artefacts that morphological erosion causes.
@@ -451,7 +451,7 @@ def _build_master_enhanced(item_path: str, filename: str) -> str:
         console.print(f"   [dim cyan]master_enhance: cv2 pipeline done ({w2}×{h2})[/dim cyan]")
 
     except ImportError:
-        # ── PIL fallback ──────────────────────────────────────────────────────
+        # PIL fallback
         try:
             from PIL import Image, ImageOps, ImageEnhance
             import numpy as np
@@ -490,7 +490,7 @@ def _slice_master_into_tiles(master_path: str, stem: str) -> list:
     Returns [] if the master is too small to tile meaningfully (< 500 px on shorter side)
     or if neither cv2 nor PIL is available.
     """
-    # ── Try cv2 first, then fall back to PIL ──────────────────────────────────
+    # Try cv2 first, then fall back to PIL
     try:
         import cv2
         import numpy as np
@@ -522,7 +522,7 @@ def _slice_master_into_tiles(master_path: str, stem: str) -> list:
         with open(path, "rb") as _f:
             return base64.b64encode(_f.read()).decode("utf-8")
 
-    # ── Overview: downscale to ≤1024px then letterbox to square ──────────────
+    # Overview: downscale to ≤1024px then letterbox to square
     ov_fname = f"overview_{stem}.jpg"
     ov_path  = os.path.join(config.SCRATCH_DIR, ov_fname)
 
@@ -549,7 +549,7 @@ def _slice_master_into_tiles(master_path: str, stem: str) -> list:
     results.append({"filename": ov_fname, "src": f"data:image/jpeg;base64,{_encode_file(ov_path)}", "mime": "image/jpeg"})
     console.print(f"   [dim cyan]tile overview: {ov_w}×{ov_h} → {max(ov_w,ov_h)}×{max(ov_w,ov_h)} (letterboxed)[/dim cyan]")
 
-    # ── Tiles: configurable grid with 10 % overlap ────────────────────────────
+    # Tiles: configurable grid with 10 % overlap
     # Grid shape comes from config.TILING_GRID = (rows, cols).
     # Each tile spans 1/N of the axis + 5 % padding each side (10 % overlap).
     rows, cols = getattr(config, "TILING_GRID", (2, 2))
@@ -620,7 +620,7 @@ def load_images_for_vision(image_input: str) -> list:
                 size_mb = os.path.getsize(item) / (1024 * 1024)
                 console.print(f"   [dim]loading {filename} ({size_mb:.2f} MB)[/dim]")
 
-                # ── Tiling path (IMAGE_TILING = True) ─────────────────────────────
+                # Tiling path (IMAGE_TILING = True)
                 if config.IMAGE_TILING:
                     show_image_in_terminal(item)
                     stem = Path(item).stem
@@ -635,7 +635,7 @@ def load_images_for_vision(image_input: str) -> list:
                     except Exception as tile_err:
                         console.print(f"   [dim yellow]tiling failed ({tile_err}) — using standard path[/dim yellow]")
 
-                # ── Standard path (tiling off, or tiling fell through) ─────────
+                # Standard path (tiling off, or tiling fell through)
                 with open(item, "rb") as f:
                     raw = f.read()
                 encoded = base64.b64encode(raw).decode("utf-8")
@@ -661,9 +661,9 @@ def load_images_for_vision(image_input: str) -> list:
     return results
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # OCR IMAGE PROCESSING
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def process_images_via_ocr(image_input: str, ocr_agent) -> str:
     """
@@ -698,7 +698,7 @@ def process_images_via_ocr(image_input: str, ocr_agent) -> str:
     ocr_results = []
 
     if getattr(config, "IMAGE_TILING", False):
-        # ── Tiling path ────────────────────────────────────────────────────────
+        # Tiling path
         # Each source image is enhanced → tiled → sent to OCR as ONE group call
         # (overview + crops in one API message) → one result dict per image.
         # Mirrors the vision path: model sees full context + zoomed detail at once.
@@ -755,7 +755,7 @@ def process_images_via_ocr(image_input: str, ocr_agent) -> str:
                     console.print(f"   [yellow]⚠️  OCR failed for '{_filename}': {_e}[/yellow]")
 
     else:
-        # ── Standard path (IMAGE_TILING=False) ────────────────────────────────
+        # Standard path (IMAGE_TILING=False)
         # _copy_and_enhance for each file, then OCR all independently.
         # Unchanged from original behaviour.
         try:
@@ -811,13 +811,13 @@ def process_images_via_ocr(image_input: str, ocr_agent) -> str:
 
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # LaTeX → UNICODE CONVERTER
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def prep_for_console(text: str) -> str:
     """Convert LaTeX and special notation to Unicode for terminal display."""
-    # ── Fast path: skip all processing for plain prose / code ──────────
+    # Fast path: skip all processing for plain prose / code
     # The overwhelming majority of responses contain no math at all.
     # A single linear scan to check for trigger characters is far cheaper
     # than running 30+ regexes that will all find zero matches.
@@ -833,7 +833,7 @@ def prep_for_console(text: str) -> str:
     if not any(t in text for t in _math_triggers) and not _has_bare_subscript:
         return text
 
-    # ── 0. Stash inline code spans so regexes below never touch them ──
+    # 0. Stash inline code spans so regexes below never touch them
     # Single-backtick spans: `...`  (triple-backtick blocks are already
     # handled by print_smart_response before we're called, so we only
     # need to guard single-backtick inline code here.)
@@ -849,7 +849,7 @@ def prep_for_console(text: str) -> str:
     # Stash XML tags so things like <bash>echo $PATH</bash> don't become math blocks
     text = re.sub(r'<(\w+)(?:\s[^>]*)?>.*?</\1>', _stash_code, text, flags=re.DOTALL)
 
-    # ── 1. $$ and $ blocks via pylatexenc (DO THIS FIRST!) ─────────
+    # 1. $$ and $ blocks via pylatexenc (DO THIS FIRST!)
     def replace_math(m):
         try:
             src = m.group(1)
@@ -871,7 +871,7 @@ def prep_for_console(text: str) -> str:
     # preventing accidental multi-expression merges.
     text = re.sub(r'(?<!\\)\$(?!\s)([^\n$]+?)(?<!\s)\$', replace_math, text)
 
-    # ── 2. Named arrows (outside math blocks) ──────────────────────
+    # 2. Named arrows (outside math blocks)
     # Use PARENS not brackets - Rich misparses [label] as a markup tag.
     text = re.sub(r'\\xrightarrow\{([^}]+)\}', ' →(\\1) ', text)
     text = re.sub(r'\\xleftarrow\{([^}]+)\}',  ' ←(\\1) ', text)
@@ -880,7 +880,7 @@ def prep_for_console(text: str) -> str:
     text = re.sub(r'\\(?:stackrel|overset)\{([^}]*)\}\{([^}]*)\}', '\\2(\\1)', text)
     text = re.sub(r'\\underset\{([^}]*)\}\{([^}]*)\}', '\\2(\\1)', text)
 
-    # ── 2.1. \not-prefixed negations ──────────────────────────────
+    # 2.1. \not-prefixed negations
     # Must run BEFORE the bare dict so \not\in isn't split into negation + membership.
     # ORDERING: longer/more-specific forms FIRST (\not\subseteq before \not\subset).
     _NOT_MAP = (
@@ -892,7 +892,7 @@ def prep_for_console(text: str) -> str:
         (r'\not\simeq',    '\u2244'),  (r'\not\sim',      '\u2241'),
         # \not\parallel BEFORE bare dict converts \parallel
         (r'\not\parallel', '\u2226'),  (r'\not\perp',     '\u2aeb'),
-        # \not\subset etc already above; negated orders also above ─
+        # \not\subset etc already above; negated orders also above
         (r'\not\leq',      '\u2270'),  (r'\not\geq',      '\u2271'),
         (r'\not\le',       '\u2270'),  (r'\not\ge',       '\u2271'),
         (r'\not\prec',     '\u2280'),  (r'\not\succ',     '\u2281'),
@@ -902,16 +902,16 @@ def prep_for_console(text: str) -> str:
     for _nm, _nr in _NOT_MAP:
         text = text.replace(_nm, _nr)
 
-    # ── 2.2. \left / \right delimiter cleanup ──────────────
+    # 2.2. \left / \right delimiter cleanup
     # Models frequently write these outside math delimiters. Map to plain
     # ASCII brackets - mathematically identical, no LaTeX garbage.
     _DELIM_MAP = (
-        # ─ Curly braces ──────────────────────────────────────────────────
+        # Curly braces
         (r'\left\{',    '{'),   (r'\right\}',   '}'),   # braces FIRST
-        # ─ Angle brackets - MUST precede \left( so \left\langle is handled whole ─
+        # Angle brackets - MUST precede \left( so \left\langle is handled whole
         (r'\left\langle','\u27e8'), (r'\right\rangle','\u27e9'),
         (r'\left\|',    '\u2016'),  (r'\right\|',    '\u2016'),  # double-bar norm
-        # ─ Ordinary brackets ──────────────────────────────────────────────
+        # Ordinary brackets
         (r'\left(',     '('),   (r'\right)',     ')'),
         (r'\left[',     '['),   (r'\right]',     ']'),
         (r'\left|',     '|'),   (r'\right|',     '|'),
@@ -925,15 +925,15 @@ def prep_for_console(text: str) -> str:
         (r'\big(',      '('),   (r'\big)',       ')'),
         (r'\big|',      '|'),   (r'\Big|',       '|'),
         (r'\vert',      '|'),   (r'\Vert',       '\u2016'),
-        # ─ Escaped braces (set builder / literal) ────────────────────────
+        # Escaped braces (set builder / literal)
         (r'\{',         '{'),   (r'\}',          '}'),
-        # ─ Norm \|..\| ────────────────────────────────────────
+        # Norm \|..\|
         (r'\|',         '\u2016'),  # double-bar norm; after \left\| so compound matches first
     )
     for _dm, _dr in _DELIM_MAP:
         text = text.replace(_dm, _dr)
 
-    # ── 2.3. Math decorator stripping ──────────────
+    # 2.3. Math decorator stripping
     # \mathbf{F}, \mathit{x}, \mathrm{d}, \mathcal{L}, \text{if x>0}
     # Strip the wrapper, keep the content. Loses font style (irrelevant
     # in terminal) but preserves the mathematical symbol exactly.
@@ -948,10 +948,10 @@ def prep_for_console(text: str) -> str:
     # Style switches that never carry content - simply erase them
     text = re.sub(r'\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)\b', '', text)
 
-    # ── 2.4. Binomial coefficients ─────────────────────────────────
+    # 2.4. Binomial coefficients
     text = re.sub(r'\\[dt]?binom\{([^{}]*)\}\{([^{}]*)\}', r'C(\1,\2)', text)
 
-    # ── 2.5. Bracket decorators ────────────────────────────────────
+    # 2.5. Bracket decorators
     text = re.sub(r'\\underbrace\{([^{}]+)\}_\{([^{}]+)\}', r'\1 [\2]', text)
     text = re.sub(r'\\overbrace\{([^{}]+)\}\^\{([^{}]+)\}',  r'\1 [\2]', text)
     text = re.sub(r'\\underbrace\{([^{}]+)\}', r'\1', text)
@@ -963,26 +963,26 @@ def prep_for_console(text: str) -> str:
     text = re.sub(r'\\color\{[^{}]*\}\{([^{}]*)\}', r'\1', text)
     text = re.sub(r'\\textcolor\{[^{}]*\}\{([^{}]*)\}', r'\1', text)
 
-    # ── 2.6. LaTeX environments ────────────────────────────────────
+    # 2.6. LaTeX environments
     def _clean_env(m: re.Match) -> str:
         env  = m.group(1)
         body = m.group(2)
-        # ─ Strip column spec from tabular/array-like envs ─────────────────────
+        # Strip column spec from tabular/array-like envs
         body = re.sub(r'^\s*\{[^{}]*\}', '', body)
-        # ─ Strip structural annotation macros that have no visual meaning ──
+        # Strip structural annotation macros that have no visual meaning
         body = re.sub(r'\\cline\{[^{}]*\}', '', body)
         body = re.sub(r'\\label\{[^{}]*\}', '', body)
         body = re.sub(r'\\tag\{[^{}]*\}', '', body)
         body = re.sub(r'\\tag\*\{[^{}]*\}', '', body)
         body = body.replace('\\notag', '').replace('\\nonumber', '')
-        # ─ \item → newline + bullet inside list environments ───────────────────
+        # \item → newline + bullet inside list environments
         if env in ('itemize', 'enumerate', 'description', 'compactitem', 'compactenum'):
             body = re.sub(r'\\item\s*\[([^\]]+)\]\s*', '\n\u2022 [\\1] ', body)  # \item[label]
             body = re.sub(r'\\item\s*', '\n\u2022 ', body)                        # \item
         else:
             body = re.sub(r'\\item\s*\[([^\]]+)\]\s*', '\n\u2022 [\\1] ', body)
             body = re.sub(r'\\item\s*', '\n\u2022 ', body)
-        # ─ Format body into readable form ──────────────────────────────────
+        # Format body into readable form
         body = (body
                 .replace('\\\\', '\n')
                 .replace('&', '  ')
@@ -1002,7 +1002,7 @@ def prep_for_console(text: str) -> str:
             break
         text = new
 
-    # ── 2.7. LaTeX spacing macros + structural noise ─────────────────
+    # 2.7. LaTeX spacing macros + structural noise
     for _sp, _sr in (
         (r'\qquad', '    '), (r'\quad', '  '),
         (r'\thinspace', ' '), (r'\medspace', ' '), (r'\thickspace', ' '),
@@ -1018,12 +1018,12 @@ def prep_for_console(text: str) -> str:
     # \item in bare text (outside list environments) → bullet point
     text = re.sub(r'\\item\s*\[([^\]]+)\]\s*', '\n\u2022 [\\1] ', text)   # \item[label]
     text = re.sub(r'\\item\s*', '\n\u2022 ', text)                          # bare \item
-    # ── Strip annotation/measurement macros with no terminal meaning ──────────────
+    # Strip annotation/measurement macros with no terminal meaning
     # These produce zero visible output in LaTeX; strip to avoid raw \cmd leaking.
     text = re.sub(r'\\label\{[^{}]*\}', '', text)          # \label{eq:1}
     text = re.sub(r'\\tag\*?\{[^{}]*\}', '', text)         # \tag{*} \tag*{*}
     text = text.replace('\\notag', '').replace('\\nonumber', '')
-    # ── Spacing / box macros: strip wrapper, PRESERVE content ───────────────────
+    # Spacing / box macros: strip wrapper, PRESERVE content
     text = re.sub(r'\\phantom\{([^{}]*)\}', '', text)      # invisible - drop entirely
     text = re.sub(r'\\vphantom\{([^{}]*)\}', '', text)     # invisible vertical
     text = re.sub(r'\\hphantom\{([^{}]*)\}', '', text)     # invisible horizontal
@@ -1037,20 +1037,20 @@ def prep_for_console(text: str) -> str:
     text = re.sub(r'\\m?kern\s*-?\s*[\d.]*\s*(?:pt|em|ex|mu|cm|mm|in)?', '', text)
     # \bm{x} bold math - strip wrapper, keep content (like \mathbf)
     text = re.sub(r'\\bm\{([^{}]*)\}', r'\1', text)
-    # ── Structural / formatting no-ops: strip before _bare to prevent prefix eating ──
+    # Structural / formatting no-ops: strip before _bare to prevent prefix eating
     # CRITICAL ORDER: \intertext before \int, \caption before \cap, etc.
     # These produce NO output in terminal - content preserved where applicable.
     text = re.sub(r'\\intertext\{([^{}]*)\}',      r' \1 ', text)  # \intertext
     text = re.sub(r'\\shortintertext\{([^{}]*)\}', r' \1 ', text)  # \shortintertext
-    # ── Color wrappers: strip color metadata, preserve content ─────────────────────
+    # Color wrappers: strip color metadata, preserve content
     text = re.sub(r'\\colorbox\{[^{}]*\}\{([^{}]*)\}', r'\1', text)           # \colorbox
     text = re.sub(r'\\fcolorbox\{[^{}]*\}\{[^{}]*\}\{([^{}]*)\}', r'\1', text) # \fcolorbox
-    # ── Content-bearing commands: strip wrapper keep content ────────────────────
+    # Content-bearing commands: strip wrapper keep content
     text = re.sub(r'\\footnote\{([^{}]*)\}', r' [\1]', text)   # footnote → inline [note]
     text = re.sub(r'\\footnotetext\{([^{}]*)\}', r' [\1]', text)
     text = re.sub(r'\\caption\*?\{([^{}]*)\}', r'\1', text)    # caption content visible
     text = re.sub(r'\\ensuremath\{([^{}]*)\}', r'\1', text)    # inline math wrapper
-    # ── Layout macros: strip entirely (no visible effect in terminal) ───────────
+    # Layout macros: strip entirely (no visible effect in terminal)
     for _lm in (r'\centering', r'\raggedright', r'\raggedleft',
                 r'\noindent', r'\allowdisplaybreaks',
                 r'\displaybreak', r'\strut', r'\mathstrut',
@@ -1063,7 +1063,7 @@ def prep_for_console(text: str) -> str:
     # the first ~ in '~~' is preceded by non-word (start/space), so it doesn't match.
     text = re.sub(r'(?<=\w)~(?=[\w\\({])', ' ', text)
 
-    # ── 2.8. \sqrt[n]{x} → ⁿ√(x)  /  \sqrt{x} → √(x) ────────────
+    # 2.8. \sqrt[n]{x} → ⁿ√(x)  /  \sqrt{x} → √(x)
     text = re.sub(
         r'\\sqrt\[(\d+)\]\{([^{}]*)\}',
         lambda m: m.group(1).translate(str.maketrans('0123456789', '⁰¹²³⁴⁵⁶⁷⁸⁹')) + '\u221a(' + m.group(2) + ')',
@@ -1071,7 +1071,7 @@ def prep_for_console(text: str) -> str:
     )
     text = re.sub(r'\\sqrt\{([^{}]*)\}', '√(\\1)', text)
 
-    # ── 3. Bare fractions ──────────────────────────────────────────
+    # 3. Bare fractions
     # Normalise \dfrac / \tfrac / \cfrac → \frac first so _wrap_frac
     # finds them. These variants only differ in display size, which is
     # irrelevant in the terminal.
@@ -1080,7 +1080,7 @@ def prep_for_console(text: str) -> str:
     text = text.replace(r'\cfrac', r'\frac')
     text = _wrap_frac_args_in_parens(text)
 
-    # ── 4. Degree symbol ───────────────────────────────────────────────────
+    # 4. Degree symbol
     # Primary fix is in _PRE_LATEX_MACRO_FIXUPS (converts ^\circ → ° before
     # pylatexenc sees it).  The following catch the bare-text path and any
     # leftovers (e.g., pylatexenc emits ∘ from \circ - catch that too).
@@ -1089,13 +1089,13 @@ def prep_for_console(text: str) -> str:
     # After pylatexenc: \circ may already be ∘ (U+2218); convert ^∘ → °
     text = re.sub(r'(\d*)\^\u2218', r'\1°', text)   # 30^∘ → 30° / ^∘ → °
 
-    # ── 4.5. Accent / modifier macros ──────────────────────────────
+    # 4.5. Accent / modifier macros
     _HAT_MAP   = {'a':'\u00e2','e':'\u00ea','i':'\u00ee','o':'\u00f4','u':'\u00fb',
                   'A':'\u00c2','E':'\u00ca','I':'\u00ce','O':'\u00d4','U':'\u00db'}
     _TILDE_MAP = {'a':'\u00e3','n':'\u00f1','o':'\u00f5',
                   'A':'\u00c3','N':'\u00d1','O':'\u00d5'}
     _BAR_MAP   = {'a':'\u0101','e':'\u0113','i':'\u012b','o':'\u014d','u':'\u016b'}
-    # ── Inner-first pass: process \vec/\dot/\ddot BEFORE \hat/\tilde/\bar ─────────
+    # Inner-first pass: process \vec/\dot/\ddot BEFORE \hat/\tilde/\bar
     # Reason: \hat{\vec{x}} - \vec{x} regex can't match through nested braces,
     # but \hat{ outer regex also fails (inner { breaks [^{}]+). Running \vec
     # first converts \vec{x}→x⃗, leaving \hat{x⃗} which \hat then catches.
@@ -1105,7 +1105,7 @@ def prep_for_console(text: str) -> str:
                   lambda m: m.group(1) + '\u0307', text)
     text = re.sub(r'\\ddot\{([^{}]+)\}',
                   lambda m: m.group(1) + '\u0308', text)
-    # ── Outer-pass: \hat/\tilde/\bar (run after inner macros expanded) ──────────
+    # Outer-pass: \hat/\tilde/\bar (run after inner macros expanded)
     # Pattern uses [^{}]+ (one-or-more) so multi-char args like \hat{AB} are
     # handled. For single chars the HAT/TILDE/BAR maps use precomposed Unicode;
     # the fallback is a combining diacritic on the full content.
@@ -1127,7 +1127,7 @@ def prep_for_console(text: str) -> str:
     text = re.sub(r'\\overleftarrow\{([^{}]+)\}',
                   lambda m: m.group(1) + '\u20d6', text)
 
-    # ── 4.8. Ensure spaces around math functions BEFORE _bare ──────
+    # 4.8. Ensure spaces around math functions BEFORE _bare
     # Prevents fusing subscripts and functions (e.g. T_1\sin → T_1 sin),
     # which would cause bare subscript regex to mangle "1sin" into "₁ₛᵢₙ".
     text = re.sub(
@@ -1135,9 +1135,9 @@ def prep_for_console(text: str) -> str:
         r' \1 ', text
     )
 
-    # ── 5. Bare Greek + operators ──────────────────────────────────
+    # 5. Bare Greek + operators
     _bare = {
-        # ── Greek lowercase - var-forms FIRST ───────────────────────
+        # Greek lowercase - var-forms FIRST
         r'\varepsilon': '\u03b5',  r'\epsilon': '\u03b5',
         r'\vartheta':   '\u03d1',  r'\theta':   '\u03b8',
         r'\varpi':      '\u03d6',  r'\pi':      '\u03c0',
@@ -1150,12 +1150,12 @@ def prep_for_console(text: str) -> str:
         r'\mu':    '\u03bc',  r'\nu':    '\u03bd',  r'\xi':     '\u03be',
         r'\tau':   '\u03c4',  r'\upsilon':'\u03c5', r'\chi':    '\u03c7',
         r'\psi':   '\u03c8',  r'\omega': '\u03c9',
-        # ── Greek uppercase ──────────────────────────────────────────
+        # Greek uppercase
         r'\Gamma': '\u0393',  r'\Delta': '\u0394',  r'\Theta':  '\u0398',
         r'\Lambda':'\u039b',  r'\Xi':    '\u039e',  r'\Pi':     '\u03a0',
         r'\Sigma': '\u03a3',  r'\Upsilon':'\u03a5', r'\Phi':    '\u03a6',
         r'\Psi':   '\u03a8',  r'\Omega': '\u03a9',
-        # ── Relations: longer/more-specific aliases FIRST ───────────
+        # Relations: longer/more-specific aliases FIRST
         # ORDERING: \leq BEFORE \le, \geq BEFORE \ge because \le is a
         # prefix of \leq - if \le replaced first, \leq → ≤q (garbled).
         r'\models':  '\u22a8',  # \models BEFORE \bmod/\mod (\mod is prefix of \models)
@@ -1182,15 +1182,15 @@ def prep_for_console(text: str) -> str:
         r'\propto':   '\u221d',
         r'\simeq':    '\u2243',  r'\sim':      '\u223c',
         r'\cong':     '\u2245',  # ≅ - must follow \simeq/\sim (no prefix clash)
-        # ── Negated relations - MUST precede their positive counterparts ──────
+        # Negated relations - MUST precede their positive counterparts
         # e.g. \nleq before \leq, \nless before \le, \ngeq before \geq/\ge
         r'\nless':    '\u226e',  r'\ngtr':    '\u226f',
         r'\nleq':     '\u2270',  r'\ngeq':    '\u2271',
-        # ── Partial orders ──────────────────────────────────────────
+        # Partial orders
         # \preceq BEFORE \prec  |  \succeq BEFORE \succ
         r'\preceq':   '\u2aaf',  r'\succeq':  '\u2ab0',
         r'\prec':     '\u227a',  r'\succ':    '\u227b',
-        # ── Approximation with tilde ──────────────────────────────
+        # Approximation with tilde
         r'\infty':  '\u221e',  r'\partial': '\u2202',  r'\nabla': '\u2207',
         r'\iiint':  '\u222d',  r'\iint':    '\u222c',  r'\oint':  '\u222e',
         r'\inf':     'inf',     r'\sup':     'sup',
@@ -1201,7 +1201,7 @@ def prep_for_console(text: str) -> str:
         r'\sqrt':   '\u221a',
         r'\cdots':  '\u22ef',  r'\ldots':   '\u2026',  r'\vdots': '\u22ee',
         r'\ddots':  '\u22f1',  r'\dots':    '\u2026',
-        # ── Long arrows - ALL before their short counterparts ───────────────
+        # Long arrows - ALL before their short counterparts
         # \longrightarrow is a superset of \rightarrow as a raw string.
         # If \rightarrow ran first, \longrightarrow → \long→ (garbled).
         r'\Longleftrightarrow': '\u21d4',  # long double ⇔
@@ -1223,7 +1223,7 @@ def prep_for_console(text: str) -> str:
         r'\coloneqq': '\u2254', r'\coloneq':  '\u2254',  # := notation
         r'\top':      '\u22a4', r'\bot':      '\u22a5',
         r'\to':       '\u2192',
-        # ── Set theory ──────────────────────────────────────────
+        # Set theory
         r'\cup':      '\u222a',  r'\cap':     '\u2229',
         r'\setminus': '\u2216',  # A ∖ B set difference
         r'\emptyset': '\u2205',  r'\varnothing':'\u2205',
@@ -1233,16 +1233,16 @@ def prep_for_console(text: str) -> str:
         r'\wedge':   '\u2227',  r'\vee':    '\u2228',   # aliases for \land/\lor
         r'\lnot':    '\u00ac',  r'\neg':    '\u00ac',
         r'\forall':  '\u2200',
-        # ── Algebra / operators ───────────────────────────────────────
+        # Algebra / operators
         r'\oplus':   '\u2295',  r'\otimes':  '\u2297',
         r'\odot':    '\u2299',  r'\ominus':  '\u2296',
         r'\circ':    '\u2218',  r'\bullet':  '\u2022',
         # \models moved above before \bmod/\mod (see ordering comment there)
         r'\vdash':  '\u22a2',  r'\dashv': '\u22a3',   # proof turnstile / reverse turnstile
-        # ── Brackets ────────────────────────────────────────────────
+        # Brackets
         r'\lceil':   '\u2308',  r'\rceil':   '\u2309',   # ⌈ ⌉ ceiling
         r'\lfloor':  '\u230a',  r'\rfloor':  '\u230b',   # ⌊ ⌋ floor
-        # ── Colon forms ────────────────────────────────────────────────
+        # Colon forms
         r'\colon':   ':',  # f \colon X \to Y - function type notation
         r'\mathbb{R}': '\u211d',  r'\mathbb{N}': '\u2115',
         r'\mathbb{Z}': '\u2124',  r'\mathbb{Q}': '\u211a',
@@ -1269,7 +1269,7 @@ def prep_for_console(text: str) -> str:
         r'\arg':     'arg',     r'\hom':     'Hom',
         r'\tr':      'tr',      r'\rank':    'rank',
     }
-    # ── 5-pre. Regex-based macros (BEFORE _bare for brace-args; AFTER for \mathbb) ──
+    # 5-pre. Regex-based macros (BEFORE _bare for brace-args; AFTER for \mathbb)
     # \pmod{n}, \pod{n}, \bmod{n}: take brace args .replace() can't extract.
     text = re.sub(r'\\pmod\{([^{}]*)\}', r' (mod \1)', text)
     text = re.sub(r'\\pod\{([^{}]*)\}',  r' (\1)',     text)
@@ -1288,12 +1288,12 @@ def prep_for_console(text: str) -> str:
     for latex, uni in sorted(_bare.items(), key=lambda kv: len(kv[0]), reverse=True):
         text = text.replace(latex, uni)
 
-    # ── 5-post. \mathbb catch-all (AFTER _bare so R→ℝ etc. fire first) ───────────
+    # 5-post. \mathbb catch-all (AFTER _bare so R→ℝ etc. fire first)
     # Anything remaining after _bare's specific entries is an unlisted field
     # letter - fall back to stripping the wrapper (bare letter is readable).
     text = re.sub(r'\\mathbb\{([^{}]*)\}', r'\1', text)
 
-    # ── 6. Bare superscripts/subscripts ────────────────────────────
+    # 6. Bare superscripts/subscripts
     sup_map = str.maketrans(
         '0123456789+-=()abcdefghijklmnopqrstuvwxyz',
         '\u2070\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079'
@@ -1308,10 +1308,10 @@ def prep_for_console(text: str) -> str:
     )
     _sub_chars = set('0123456789aehijklmnoprstuvx')
 
-    # ── 6a. Compound fraction exponents (bare path, outside math blocks) ────
+    # 6a. Compound fraction exponents (bare path, outside math blocks)
     text = re.sub(r'\^\{(\d+)/(\d+)\}', _fmt_frac_exp, text)
 
-    # ── 6a2. Prime superscripts - BEFORE general ^{...} ─────────────────────
+    # 6a2. Prime superscripts - BEFORE general ^{...}
     # f^{\prime\prime\prime} → f‴, f^{\prime\prime} → f″, f^{\prime} → f′
     # Also handle the common apostrophe-style f'' → f″ etc.
     text = re.sub(r"\^\{(?:\\prime){3}\}", "\u2034", text)   # ‴ triple prime (raw)
@@ -1323,13 +1323,13 @@ def prep_for_console(text: str) -> str:
     text = re.sub(r"\^\{[\u2032]{2}\}", "\u2033", text)      # ″ double prime (already converted)
     text = re.sub(r"\^\{[\u2032]\}",    "\u2032", text)      # ′ single prime (already converted)
 
-    # ── 6b. Regular superscripts ──────────────────────────────────
+    # 6b. Regular superscripts
     text = re.sub(
         r'\^\{([0-9+\-=()a-zA-Z]+)\}|\^([+-]?\d+)',
         lambda m: (m.group(1) or m.group(2)).translate(sup_map),
         text,
     )
-    # ── 6c. Fallback: ^{...} that survived ────────────────────────
+    # 6c. Fallback: ^{...} that survived
     text = re.sub(r'\^\{([^{}]+)\}', lambda m: '^(' + m.group(1) + ')', text)
 
     def _sub_braced(m: re.Match) -> str:
@@ -1342,19 +1342,19 @@ def prep_for_console(text: str) -> str:
     text = re.sub(r'_([0-9aehijklmnoprstuvx]+)(?![a-zA-Z0-9_])',
         lambda m: m.group(1).translate(sub_map), text)
 
-    # ── 7. Restore stashed inline code spans ──────────────────────
+    # 7. Restore stashed inline code spans
     for i, original in enumerate(_stash):
         text = text.replace(_PLACEHOLDER.format(i), original)
 
-    # ── 8. Final whitespace normalisation ───────────────────────────
+    # 8. Final whitespace normalisation
     text = re.sub(r'[ \t]{2,}', ' ', text)
 
     return text
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # RESPONSE PRINTER
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def print_smart_response(text: str):
     """Print response - syntax-highlighted code blocks, markdown for prose with LaTeX rendering."""

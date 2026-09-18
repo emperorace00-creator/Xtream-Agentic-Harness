@@ -39,13 +39,13 @@ import numpy as np
 from pathlib import Path
 import config
 
-# ── Chunk file suffix ─────────────────────────────────────────────────────────
+# Chunk file suffix
 CHUNKS_SUFFIX   = ".chunks.json"
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # CHUNKER
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def _chunk_text(text: str) -> list:
     """
@@ -83,7 +83,7 @@ def _chunk_text(text: str) -> list:
 
     for para, offset in para_items:
         if window_len + len(para) + 2 > config.EMBED_CHUNK_SIZE and window:
-            # ── Emit current window ───────────────────────────────────────────
+            # Emit current window
             chunk_text = "\n\n".join(p for p, _ in window)
             start_char = window[0][1]
             last_para_text, last_para_offset = window[-1]
@@ -95,7 +95,7 @@ def _chunk_text(text: str) -> list:
                 "end_char":   end_char,
             })
 
-            # ── Seed next window with overlap ─────────────────────────────────
+            # Seed next window with overlap
             # Walk backwards through window paras until we have >= CHUNK_OVERLAP
             # chars - use whole paragraphs so overlap text is always clean prose.
             overlap_len       = 0
@@ -115,7 +115,7 @@ def _chunk_text(text: str) -> list:
         window.append((para, offset))
         window_len += len(para) + 2
 
-    # ── Flush remaining window ────────────────────────────────────────────────
+    # Flush remaining window
     if window:
         chunk_text = "\n\n".join(p for p, _ in window)
         chunks.append({
@@ -132,12 +132,12 @@ def _char_to_line(text: str, char_offset: int) -> int:
     return text[:char_offset].count("\n") + 1
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # EMBEDDING API
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # DOC SEARCH AGENT
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 class DocSearchAgent:
     """
@@ -151,13 +151,13 @@ class DocSearchAgent:
 
     def __init__(self, scratch_dir: str = config.SCRATCH_DIR):
         self.scratch_dir = scratch_dir
-        # ── Chunk cache: path → (mtime, list[chunk]) ─────────────────────────
+        # Chunk cache: path → (mtime, list[chunk])
         # Avoids re-reading and re-parsing the entire .chunks.json on every
         # doc_search call. Entry is invalidated only when the file's mtime
         # changes (i.e. after a new ingest_pdf run).
         self._chunks_cache: dict = {}
 
-    # ── Ingest-time ───────────────────────────────────────────────────────────
+    # Ingest-time
 
     def chunk_and_embed(self, txt_path: str, source_hash: str = None) -> dict:
         """
@@ -266,7 +266,7 @@ class DocSearchAgent:
             "chunks_path": out_path,
         }
 
-    # ── Query-time ────────────────────────────────────────────────────────────
+    # Query-time
 
     def search(self, query: str, top_k: int = 5) -> str:
         """
@@ -377,7 +377,7 @@ class DocSearchAgent:
         )
         return "\n".join(lines)
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
+    # Helpers
 
     def _find_chunks_files(self) -> list:
         """Recursively find all .chunks.json files in scratch."""
@@ -427,9 +427,9 @@ class DocSearchAgent:
         return found
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # PDF INGEST AGENT  (was pdf_ingest.py)
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 
 
@@ -455,7 +455,7 @@ class PDFIngestAgent:
         self.scratch    = scratch_dir
         self.doc_search = DocSearchAgent(scratch_dir=scratch_dir)
 
-    # ── Public entry point ───────────────────────────────────────────────────────────────────────────────────
+    # Public entry point
 
     def ingest(self, pdf_path: str) -> dict:
         """
@@ -474,7 +474,7 @@ class PDFIngestAgent:
 
         console.print(f"\n📄 [cyan]PDF ingest: {Path(pdf_path).name}[/cyan]")
 
-        # ── Step 0: MD5 skip guard ───────────────────────────────────────────────
+        # Step 0: MD5 skip guard
         # The model explicitly controls when ingest_pdf is called - this does NOT
         # auto re-ingest on content change. It only saves a wasted 2+ minute OCR
         # run when the model calls ingest_pdf again on a file whose bytes are
@@ -516,7 +516,7 @@ class PDFIngestAgent:
             except Exception:
                 pass  # Corrupt/partial chunks file - fall through to a fresh ingest
 
-        # ── Step 1: open PDF ─────────────────────────────────────────────────────
+        # Step 1: open PDF
         try:
             import fitz  # pymupdf
         except ImportError:
@@ -534,7 +534,7 @@ class PDFIngestAgent:
 
         tmp_dir = tempfile.mkdtemp(prefix="pdf_ocr_")
 
-        # ── Steps 2 & 3 (pipelined): render pages while OCR'ing earlier ones ───
+        # Steps 2 & 3 (pipelined): render pages while OCR'ing earlier ones
         #
         # Producer thread: renders pages at 200 DPI and puts (page_idx, path)
         # into a bounded queue as each page completes.
@@ -545,7 +545,7 @@ class PDFIngestAgent:
         #
         # The AIMD gate inside ImageOCRAgent controls actual API concurrency;
         # no fixed inter-batch sleep is needed.
-        # ────────────────────────────────────────────────────────────────────────
+        # ----
         import queue as _q
         import concurrent.futures as _cf
 
@@ -615,7 +615,7 @@ class PDFIngestAgent:
                     
                     inflight_sem.acquire()
                     page_idx, img_path = item
-                    # ── Apply IMAGE_TILING / IMAGE_ENHANCE (mirrors upload pipeline) ──
+                    # Apply IMAGE_TILING / IMAGE_ENHANCE (mirrors upload pipeline)
                     # All enhancement is done in the consumer thread (here) so the
                     # AIMD gate inside ImageOCRAgent still controls API concurrency.
                     ocr_input = self._prepare_page_images(img_path, page_idx, extra_files=written_image_files)
@@ -660,7 +660,7 @@ class PDFIngestAgent:
             self._cleanup(tmp_dir, extra_files=written_image_files)
             return {"success": False, "error": f"Page rendering failed: {render_errs[0]}"}
 
-        # ── Step 4: assemble and save ────────────────────────────────────────────
+        # Step 4: assemble and save
         written_files = []  # Bug 32: track files written so we can clean up partials on failure
         try:
             parts = []
@@ -709,7 +709,7 @@ class PDFIngestAgent:
 
         self._cleanup(tmp_dir, stem=stem, extra_files=written_image_files)  # Bug 2 + Partial 1: also removes tile/overview/master images
 
-        # ── Step 5: chunk + embed for semantic doc search ────────────────────────
+        # Step 5: chunk + embed for semantic doc search
         # Bug 32: also track chunks file for cleanup on failure
         embed_result = {"success": False, "chunks": 0}
         try:
@@ -738,7 +738,7 @@ class PDFIngestAgent:
             "embedded":    embed_result.get("success", False),
         }
 
-    # ── Helpers ──────────────────────────────────────────────────────────────────
+    # Helpers
 
     def _prepare_page_images(self, img_path: str, page_idx: int, extra_files: list = None) -> str:
         """

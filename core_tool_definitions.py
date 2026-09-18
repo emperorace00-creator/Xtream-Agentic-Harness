@@ -16,9 +16,9 @@
 from datetime import date
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # FORMAT SPEC  - always injected, teaches the model the tag system
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 PSEUDO_TOOL_FORMAT = """
 ### POWERS FORMAT
@@ -39,9 +39,9 @@ RULES:
 """
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # WEB  - quick_search + url_search
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 WEB_TOOLS_PROMPT = """
 ### WEB POWERS
@@ -115,9 +115,9 @@ def web_date_context() -> str:
     )
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # HISTORY  - search_history (always bundled with files group)
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 HISTORY_TOOLS_PROMPT = """
 **search_history** — search everything you and the user have ever discussed.
@@ -153,9 +153,9 @@ And you call this tool only if user asks explicitly to ingest external chats.
 CORE_PROMPT = WEB_TOOLS_PROMPT + HISTORY_TOOLS_PROMPT
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # FILE OPS  - view_lines, search_in_file, workspace_search, str_replace
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 FILE_TOOLS_PROMPT = """
 ### YOUR ENVIRONMENT
@@ -274,9 +274,9 @@ relevant functions and classes even when your exact words don't appear in the co
 """
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # PDF  - ingest_pdf + doc_search + view_lines
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 PDF_TOOLS_PROMPT = """
 **ingest_pdf** — convert a PDF from /uploads into searchable text.
@@ -337,9 +337,9 @@ or to read the document sequentially (e.g. "first 5 pages").
 """
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # BASH  - bash sandbox tool
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 BASH_TOOLS_PROMPT = """
 **bash** — run any shell command inside the container. cwd=/workspace/scratch.
@@ -388,9 +388,9 @@ fix the mistake and retry.
 
 
 # Backward-compat alias (old imports expect FILE_OPS_PROMPT)
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # RESEARCH  - search_semantic_scholar
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 RESEARCH_TOOLS_PROMPT = """
 **search_semantic_scholar** — search the Semantic Scholar academic database across all fields
@@ -420,7 +420,7 @@ Today's date is provided in the system context so you can construct accurate yea
 FILE_OPS_PROMPT = FILE_TOOLS_PROMPT + PDF_TOOLS_PROMPT + BASH_TOOLS_PROMPT
 
 
-# ── Group → prompt block mapping (used by emperor_agent._base_system) ─────────
+# Group → prompt block mapping (used by emperor_agent._base_system)
 # Order matters: it determines the order sections appear in the system prompt.
 GROUP_PROMPTS: dict = {
     "web":      WEB_TOOLS_PROMPT,

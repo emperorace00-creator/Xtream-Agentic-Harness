@@ -47,7 +47,7 @@ from utils import (
     _cosine_similarity,
 )
 
-# ── Graceful tree-sitter import ────────────────────────────────────────────
+# Graceful tree-sitter import
 # If tree-sitter-language-pack is not installed, AST-aware chunking will 
 # gracefully fall back to the regex chunker for all files.
 try:
@@ -57,9 +57,9 @@ except ImportError:
     TREESITTER_AVAILABLE = False
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # LANGUAGE / NODE-TYPE TABLES
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 # AST node types that tree-sitter's grammar for each language uses to mark
 # "interesting" chunks (functions, classes, methods, top-level types).
@@ -106,9 +106,9 @@ _REGEX_WINDOW  = 60
 _REGEX_OVERLAP = 15
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # CODE CHUNK
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 @dataclass
 class CodeChunk:
@@ -135,9 +135,9 @@ def _build_embed_text(rel_path: str, kind: str, name: str, doc_first_line: str,
     return f"{header}\n\n{code_text}"
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # CHUNKING - tree-sitter path
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def _classify(node_type: str) -> str:
     if node_type in _CLASS_TYPES:
@@ -257,9 +257,9 @@ def _chunk_via_treesitter(text: str, language: str, rel_path: str) -> list:
     return chunks
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # CHUNKING - regex fallback path
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def _chunk_via_regex(text: str, rel_path: str, language: str) -> list:
     """
@@ -410,9 +410,9 @@ def chunk_code_file(filepath: str, rel_path: str) -> list:
     return final_chunks
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # FILE DISCOVERY / EXCLUSION
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def _should_index(filepath: str) -> bool:
     """Files that must NEVER be indexed - secrets, key files, VCS/dep dirs,
@@ -485,9 +485,9 @@ def _hash_file(path: str) -> str:
     return h.hexdigest()
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # CODE SEARCH AGENT
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 class CodeSearchAgent:
     """
@@ -514,7 +514,7 @@ class CodeSearchAgent:
         self._index_loaded = False
         self._stale         = True  # starts stale - first semantic query triggers a build
 
-    # ── Public API ──────────────────────────────────────────────────────
+    # Public API
 
     def mark_stale(self):
         """Called after bash/str_replace - just flips a flag, no embed calls."""
@@ -590,15 +590,15 @@ class CodeSearchAgent:
         for c in self._index["chunks"]:
             chunks_by_file.setdefault(c["file"], []).append(c)
 
-        # ── Deleted files ────────────────────────────────────────────────
+        # Deleted files
         for f in [f for f in old_hashes if f not in current_map]:
             del old_hashes[f]
             chunks_by_file.pop(f, None)
 
         any_failure = False
 
-        # ── New / changed files: chunk first, stage the hash, don't commit
-        #    it until the embed step below confirms every chunk succeeded ──
+        # New / changed files: chunk first, stage the hash, don't commit
+        #    it until the embed step below confirms every chunk succeeded
         pending_hashes: dict = {}   # cpath -> new_hash, staged
         pending_chunks: dict = {}   # cpath -> list[CodeChunk], staged
         to_embed_texts: list = []
@@ -770,7 +770,7 @@ class CodeSearchAgent:
             lines.append("")
         return "\n".join(lines)
 
-    # ── Introspection helper (also used by ad-hoc verification scripts) ──
+    # Introspection helper (also used by ad-hoc verification scripts)
 
     def _chunk_file(self, filepath: str) -> list:
         """Resolve `filepath` against self.search_dirs and return its

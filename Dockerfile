@@ -10,8 +10,8 @@
 
 FROM python:3.12-slim
 
-# ── System deps for pymupdf (PDF rendering), diagram generation, and
-#    general tooling ────────────────────────────────────────────────────────
+# System deps for pymupdf (PDF rendering), diagram generation, and
+#    general tooling
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libmupdf-dev \
@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Python packages available inside the sandbox ─────────────────────────────
+# Python packages available inside the sandbox
 # These let the agent run code, process data, and generate outputs.
 RUN pip install --no-cache-dir \
     numpy \
@@ -35,12 +35,12 @@ RUN pip install --no-cache-dir \
     Pillow \
     pymupdf
 
-# ── Container layout ─────────────────────────────────────────────────────────
+# Container layout
 # Created so Docker can verify mount points at container start.
 # Actual contents come from bind mounts configured by start.py.
 RUN mkdir -p /uploads /outputs /workspace/scratch
 
-# ── Entrypoint: create workspace skeleton, then keep container alive ─────────
+# Entrypoint: create workspace skeleton, then keep container alive
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

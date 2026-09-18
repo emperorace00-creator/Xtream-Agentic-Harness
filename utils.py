@@ -207,9 +207,9 @@ def extract_keywords(text: str) -> list:
     words = re.findall(r'\b\w{4,}\b', text.lower())
     return list({w for w in words if w not in stop_words})
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # TOKEN COUNTER
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 class TokenCounter:
     """
@@ -273,9 +273,9 @@ class TokenCounter:
         console.print("[dim]Session tokens reset[/dim]")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # IMAGE PREPROCESSOR
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def auto_enhance(image_path: str) -> list[str]:
     """
@@ -307,7 +307,7 @@ def auto_enhance(image_path: str) -> list[str]:
         arr = np.array(img, dtype=np.float32)
         applied: list[str] = []
 
-        # ── Check 1: Dark background (brightness + saturation guard) ──────────────────────────────────
+        # Check 1: Dark background (brightness + saturation guard)
         # Only invert if the image is dark AND low-saturation (i.e. dark-mode text, chalkboard,
         # monochrome document). A dark natural photo (night scene, black furniture) will have
         # higher saturation and should NOT be inverted.
@@ -330,7 +330,7 @@ def auto_enhance(image_path: str) -> list[str]:
                 # Recompute array after inversion for the contrast check below
                 arr = np.array(img, dtype=np.float32)
 
-        # ── Check 2: Low contrast (non-photo only) ──────────────────────────────────────────
+        # Check 2: Low contrast (non-photo only)
         # Per-channel std dev > 55 → likely a natural photo → skip to avoid artefacts
         per_channel_std = arr.reshape(-1, 3).std(axis=0).mean()
         is_natural_photo = per_channel_std > 55
@@ -343,7 +343,7 @@ def auto_enhance(image_path: str) -> list[str]:
                 img = ImageEnhance.Contrast(img).enhance(1.5)
                 applied.append(f"contrast(1.5, range={pixel_range:.0f})")
 
-        # ── Save if anything changed ──────────────────────────────────────────────────────────────────
+        # Save if anything changed
         if applied:
             img.save(image_path)
             console.print(
@@ -359,9 +359,9 @@ def auto_enhance(image_path: str) -> list[str]:
         return []
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # GLOBAL HISTORY
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 class GlobalHistoryWriter:
     """
@@ -398,14 +398,14 @@ class GlobalHistoryWriter:
             return False
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # ATOMIC JSON PERSISTENCE
 #
 # Single implementation of "read JSON, tolerate any error" and "write JSON
 # safely via tmp-file + os.replace" - previously hand-rolled independently
 # in web_agent (cache), workspace_tracker (registry), and turn_state_manager
 # (ledger), with only the registry/ledger versions actually being atomic.
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def load_json(filepath: str, default=None):
     """
@@ -440,11 +440,11 @@ def save_json_atomic(filepath: str, data) -> bool:
         return False
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # NVIDIA RERANKING
 #
 # Cross-encoder reranking via NVIDIA NIM API.
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def rerank_passages(query: str, passages: list, api_key: str = None, label: str = "items") -> list:
     """
@@ -508,11 +508,11 @@ def rerank_passages(query: str, passages: list, api_key: str = None, label: str 
         return original_order
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # LINE-RANGE CLIPPING
 #
 # Shared "expand [start, end] by ±context lines, clipped to the file bounds" math.
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def compute_view_window(total_lines: int, start: int, end: int, context: int) -> tuple:
     """
@@ -534,11 +534,11 @@ def compute_view_window(total_lines: int, start: int, end: int, context: int) ->
     return start_idx, end_idx
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # EXPONENTIAL BACKOFF
 #
 # Shared exponential backoff used by LLM backend retry loops.
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def backoff_wait(attempt: int, base_delay: int = 3, reason: str = "Rate limit", max_attempts: int = None):
     """
@@ -551,12 +551,12 @@ def backoff_wait(attempt: int, base_delay: int = 3, reason: str = "Rate limit", 
     time.sleep(wait)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # CACHED API KEY READER
 #
 # Single per-process cache for key files - avoids each module independently
 # re-reading the same file and maintaining its own cache dict/global.
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 @functools.lru_cache(maxsize=None)
 def read_api_key_cached(filepath: str) -> str:
@@ -566,12 +566,12 @@ def read_api_key_cached(filepath: str) -> str:
     return read_api_key(filepath, silence_warning=True)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # SHARED SECURITY & EXCLUSION CONSTANTS
 #
 # Centralised here so a single audit covers all security-sensitive patterns
 # and all "ephemeral / ignore" directory sets across the project.
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 # Bash hard blocklist - patterns that would cause catastrophic damage inside
 # the Docker sandbox. Defined here (not config.py) because these are security
@@ -603,12 +603,12 @@ EXCL_DIRS     = {
 }
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # NVIDIA EMBEDDING API
 #
 # Moved here from doc_search_agent.py so tool_handlers.py can import them
 # without creating an upward dependency into a domain module.
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def _embed(texts: list, input_type: str = "passage") -> list:
     """
@@ -700,7 +700,7 @@ def _embed_batched(texts: list, input_type: str = "passage") -> list:
     return all_embeddings
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # MISTRAL CODESTRAL EMBED API
 #
 # Separate from _embed()/_embed_batched() above (NVIDIA Nemotron, used for
@@ -712,7 +712,7 @@ def _embed_batched(texts: list, input_type: str = "passage") -> list:
 #   - "output_dimension" selects a Matryoshka-truncated embedding size
 #   - built-in 8192-token truncation server-side, no "truncate" flag needed
 # Used exclusively by code_search_agent.py for workspace_search(semantic=true).
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 def _embed_code(texts: list) -> list:
     """
@@ -858,7 +858,7 @@ def _embed_code_batched(texts: list) -> tuple:
 
     token_counts = [_estimate_code_tokens(t) for t in texts]
 
-    # ── Pre-filter: chunks too large for the model, full stop ──────────
+    # Pre-filter: chunks too large for the model, full stop
     indexable = []
     oversized: set = set()
     for i, est in enumerate(token_counts):

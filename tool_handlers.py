@@ -89,9 +89,9 @@ class ToolHandlersMixin:
         self.search_history_agent, self.ocr_agent, self.summarizer
     """
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # DISPATCH TABLE
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def _build_dispatch(self) -> dict:
         """
@@ -99,7 +99,7 @@ class ToolHandlersMixin:
         Adding a new tool = one entry here + one private _handle_* method. No if/elif needed.
         """
         d = {
-            # ── Core ──────────────────────────────────────────────────────────
+            # Core
             "quick_search":             self._handle_quick_search,
             "url_search":               self._handle_url_search,
 
@@ -109,21 +109,21 @@ class ToolHandlersMixin:
             "doc_search":               self._handle_doc_search,
             "ingest_pdf":               self._handle_ingest_pdf,
             "ingest_text":              self._handle_ingest_text,
-            # ── Research ──────────────────────────────────────────────────────
+            # Research
             "search_semantic_scholar":  self._handle_search_semantic_scholar,
-            # ── File ops ──────────────────────────────────────────────────────
+            # File ops
             "str_replace":              self._handle_str_replace,
             "view_lines":               self._handle_view_lines,
             "search_in_file":           self._handle_search_in_file,
-            # ── Bash ──────────────────────────────────────────────────────────
+            # Bash
             "bash":                     self._handle_bash_exec,
             "show_image":               self._handle_show_image,
         }
         return d
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # TOOL DISPATCHER
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def _call_tool(self, fn: str, args: dict, web_agent) -> str:
         """
@@ -143,9 +143,9 @@ class ToolHandlersMixin:
             return handler(args, web_agent)
         return f"[SYSTEM: ERROR] Unknown tool: '{fn}'"
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # CORE TOOL HANDLERS
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def _handle_search_history(self, args: dict, web_agent) -> str:
         """
@@ -218,7 +218,7 @@ class ToolHandlersMixin:
         out_path = os.path.join(config.GLOBAL_HISTORIES_DIR, out_name)
         sidecar_path = out_path + ".import.json"
 
-        # ── MD5 skip guard ──────────────────────────────────────────────────
+        # MD5 skip guard
         if os.path.isfile(sidecar_path):
             try:
                 with open(sidecar_path, 'r', encoding='utf-8') as f:
@@ -233,7 +233,7 @@ class ToolHandlersMixin:
 
         text = raw_bytes.decode('utf-8', errors='ignore')
 
-        # ── Write the synthetic two-line .jsonl ─────────────────────────────
+        # Write the synthetic two-line .jsonl
         try:
             os.makedirs(config.GLOBAL_HISTORIES_DIR, exist_ok=True)
             user_line      = json.dumps({"role": "user", "content": f"[SYSTEM: imported chat — {filename}]"})
@@ -452,7 +452,7 @@ class ToolHandlersMixin:
         stem        = os.path.splitext(os.path.basename(filename))[0]
         chunks_path = os.path.join(config.SCRATCH_DIR, f"{stem}.chunks.json")
 
-        # ── MD5 skip guard ──────────────────────────────────────────────────
+        # MD5 skip guard
         if os.path.isfile(chunks_path):
             try:
                 with open(chunks_path, 'r', encoding='utf-8') as f:
@@ -500,9 +500,9 @@ class ToolHandlersMixin:
             f"Use doc_search to query it."
         )
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # FILE OPS HANDLERS
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def _handle_str_replace(self, args: dict, web_agent) -> str:
         try:
@@ -777,9 +777,9 @@ class ToolHandlersMixin:
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # BASH HANDLER
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     def _handle_bash_exec(self, args: dict, web_agent) -> str:
         """
         Run a shell command inside the Docker sandbox container via `docker exec`.
@@ -805,7 +805,7 @@ class ToolHandlersMixin:
             if re.search(pattern, command, re.IGNORECASE):
                 return f"[SYSTEM: BLOCKED] Dangerous bash pattern detected: {pattern}"
 
-        # ── mv pre-capture for tracker post-hook ─────────────────────────────
+        # mv pre-capture for tracker post-hook
         # FIX #9: use shlex.split on the full command instead of naive
         # command.split("|") so quoted pipes (e.g. echo "a|b" | mv src dst)
         # don't split into wrong segments and corrupt token detection.
@@ -831,7 +831,7 @@ class ToolHandlersMixin:
         except Exception:
             pass
 
-        # ── Execute inside container (STREAMING) ─────────────────────────────
+        # Execute inside container (STREAMING)
         cmd_preview = command[:100] + ("..." if len(command) > 100 else "")
         console.print(f"🖥️  [dim]bash: {cmd_preview}[/dim]")
 
@@ -945,7 +945,7 @@ class ToolHandlersMixin:
                 f"Check file permissions (chmod +x) or use an interpreter explicitly (e.g. python script.py)."
             )
 
-        # ── mv post-hook ──────────────────────────────────────────────────────
+        # mv post-hook
         if mv_src and mv_dst and process.returncode == 0:
             try:
                 # Bug 17: if the source is a directory or a wildcard pattern, a
@@ -997,7 +997,7 @@ class ToolHandlersMixin:
             except Exception as e:
                 console.print(f"[yellow]⚠️  mv post-hook failed: {e}[/yellow]")
 
-        # ── Combine outputs for the model ─────────────────────────────────────
+        # Combine outputs for the model
         stdout_full = "\n".join(stdout_lines)
         stderr_full = "\n".join(stderr_lines)
 
@@ -1023,9 +1023,9 @@ class ToolHandlersMixin:
 
         return "\n".join(parts)
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # WORKSPACE SCAN HELPERS
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def _scan_uploads_folder(self, pdf_active: bool = True) -> str:
         """

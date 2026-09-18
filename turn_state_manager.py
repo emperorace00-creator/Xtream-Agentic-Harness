@@ -22,7 +22,7 @@ import config
 from utils import robust_rmtree, load_json, save_json_atomic, EXCL_PREFIXES, EXCL_SUFFIXES, EXCL_DIRS, _force_remove, console
 from rich.markup import escape as _esc_markup
 
-# ── Tool-to-attribution mapping ───────────────────────────────────────────────
+# Tool-to-attribution mapping
 # IMPORTANT: These must match the ACTUAL active tools in core_tool_definitions.py
 # and _build_dispatch() in tool_handlers.py.
 #
@@ -115,9 +115,9 @@ class TurnStateManager:
             if not _t.is_alive():
                 self._pending_zips.pop(_turn_num, None)
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # LEDGER PERSISTENCE
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def _load_ledger(self) -> list:
         data = load_json(self._ledger_path, default=[])
@@ -126,9 +126,9 @@ class TurnStateManager:
     def _save_ledger(self):
         save_json_atomic(self._ledger_path, self._ledger)
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # ZIP HELPERS
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def _zip_scratch(self, zip_path: str):
         """
@@ -194,9 +194,9 @@ class TurnStateManager:
             pass
         return total / (1024 * 1024)
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # ATTRIBUTION - free from _current_tool_call_log
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def _parse_attribution(self, tool_call_log: list) -> dict:
         """
@@ -242,9 +242,9 @@ class TurnStateManager:
             "outputs_created": sorted(outputs),
         }
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # COMMIT - called at end of each successful turn
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def commit_turn(
         self,
@@ -279,7 +279,7 @@ class TurnStateManager:
         zip_path = os.path.join(config.BACKUPS_DIR, zip_name)
         reg_path = os.path.join(config.BACKUPS_DIR, reg_name)
 
-        # ── Zip scratch/ (background thread, non-blocking) ───────────────────
+        # Zip scratch/ (background thread, non-blocking)
         # The zip runs in a daemon thread so the REPL is free for the user's
         # next message immediately. Each turn zips to its own uniquely-named
         # file so concurrent zips across turns can't collide; restore_turn(),
@@ -313,7 +313,7 @@ class TurnStateManager:
             self._pending_zips[turn_num] = _zip_thread
             _zip_thread.start()
 
-        # ── Snapshot workspace registry ───────────────────────────────────────
+        # Snapshot workspace registry
         tmp_reg_path = reg_path + ".tmp"
         try:
             if os.path.exists(config.WORKSPACE_REGISTRY_FILE):
@@ -327,7 +327,7 @@ class TurnStateManager:
                 os.remove(tmp_reg_path)
             reg_name = None
 
-        # ── Snapshot images (if this turn had any) ────────────────────────────
+        # Snapshot images (if this turn had any)
         img_name = None
         if images:
             img_name = f"turn_{turn_num}_images.json"
@@ -348,7 +348,7 @@ class TurnStateManager:
                     except Exception:
                         pass
 
-        # ── Build ledger entry ────────────────────────────────────────────────
+        # Build ledger entry
         attr  = self._parse_attribution(tool_call_log)
         entry = {
             "turn":           turn_num,
@@ -369,16 +369,16 @@ class TurnStateManager:
         self._ledger.sort(key=lambda e: e.get("turn", 0))
         self._save_ledger()
 
-        # ── Prune archives beyond rolling window ──────────────────────────────
+        # Prune archives beyond rolling window
         # Only prune if the current turn's backup succeeded - otherwise older
         # restorable archives would be deleted with nothing to replace them.
         if zip_name is not None:
             self._prune_old_archives(turn_num)
 
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # PRUNE - rolling archive window
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def _prune_old_archives(self, current_turn: int):
         """
@@ -449,9 +449,9 @@ class TurnStateManager:
             self._ledger = [e for e in self._ledger if e.get("turn") != turn_num]
             self._save_ledger()
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # DELETE - remove a single turn pair and renumber everything after it
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def delete_turn(self, turn_num: int, agent) -> str:
         """
@@ -478,12 +478,12 @@ class TurnStateManager:
         if turn_num < 1 or turn_num > current_turns:
             return f"[red]T{turn_num} out of range (1–{current_turns}).[/red]"
 
-        # ── Step 1: Splice out the two messages from chat_history ─────────────
+        # Step 1: Splice out the two messages from chat_history
         user_idx = (turn_num - 1) * 2
         del agent.chat_history[user_idx : user_idx + 2]
         agent.save_history(skip_global=True)
 
-        # ── Step 2: Delete orphaned archives for the deleted turn ─────────────
+        # Step 2: Delete orphaned archives for the deleted turn
         self._await_zip(turn_num)  # don't delete a zip that's still being written
         deleted_entry = next(
             (e for e in self._ledger if e.get("turn") == turn_num), None
@@ -501,7 +501,7 @@ class TurnStateManager:
                             f"[yellow]⚠ could not delete archive {fname}: {e}[/yellow]"
                         )
 
-        # ── Step 3: Rename subsequent archives (ascending order is critical) ──
+        # Step 3: Rename subsequent archives (ascending order is critical)
         # Renaming turn_4→turn_3 before turn_5→turn_4 prevents overwriting.
         # Missing files are silently skipped - not all turns have archives
         # (e.g. pure-chat turns or turns whose archives were already pruned).
@@ -520,7 +520,7 @@ class TurnStateManager:
                             f"[yellow]⚠ could not rename {old_name} → {new_name}: {e}[/yellow]"
                         )
 
-        # ── Step 4: Rebuild ledger ────────────────────────────────────────────
+        # Step 4: Rebuild ledger
         # Drop the deleted entry; decrement turn number and patch filenames for
         # every entry that came after the deleted turn.
         new_ledger = []
@@ -564,7 +564,7 @@ class TurnStateManager:
         self._ledger = sorted(new_ledger, key=lambda e: e.get("turn", 0))
         self._save_ledger()
 
-        # ── Step 5: Reconcile workspace tracker ───────────────────────────────
+        # Step 5: Reconcile workspace tracker
         # The live workspace is untouched, but this keeps the in-memory index
         # accurate in case anything changed underneath between this and the
         # previous reconcile.
@@ -586,9 +586,9 @@ class TurnStateManager:
             f"{new_total} turn(s) remain.{suffix}[/green]"
         )
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # RESTORE - full pipeline
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def restore_turn(self, turn_num: int, agent) -> str:
         """
@@ -605,7 +605,7 @@ class TurnStateManager:
 
         Returns a Rich-formatted status string for console.print().
         """
-        # ── Find ledger entry ─────────────────────────────────────────────────
+        # Find ledger entry
         entry = next((e for e in self._ledger if e.get("turn") == turn_num), None)
         if not entry:
             available = sorted(e["turn"] for e in self._ledger)
@@ -649,7 +649,7 @@ class TurnStateManager:
                 f"(pruned — only last {config.MAX_BACKUP_TURNS} turns retained).[/red]{_hint}"
             )
 
-        # ── 1. Restore scratch/ ───────────────────────────────────────────────
+        # 1. Restore scratch/
         scratch = config.SCRATCH_DIR
         try:
             # Bug 28: await ALL pending zip threads, not just the target turn's,
@@ -697,7 +697,7 @@ class TurnStateManager:
         except Exception as e:
             return f"[red]Scratch restore failed: {e}[/red]"
 
-        # ── 2. Restore workspace registry ─────────────────────────────────────
+        # 2. Restore workspace registry
         if reg_path and os.path.exists(reg_path):
             try:
                 shutil.copy2(reg_path, config.WORKSPACE_REGISTRY_FILE)
@@ -729,27 +729,27 @@ class TurnStateManager:
         # no longer exists post-restore.
         agent._uploads_cache = None
 
-        # ── 3 & 4. Truncate agent memory + trim ledger ─────────────────────────
+        # 3 & 4. Truncate agent memory + trim ledger
         # Factored into its own method so /rerun can call ONLY this part -
         # see truncate_history_only() below.
         self.truncate_history_only(turn_num, agent)
 
-        # ── 5. Reconcile workspace tracker ────────────────────────────────────
+        # 5. Reconcile workspace tracker
         try:
             agent.workspace_tracker.reconcile_workspace()
         except Exception:
             pass
 
-        # ── Summary ───────────────────────────────────────────────────────────
+        # Summary
         n_files = _count_scratch_files(scratch)
         return (
             f"[green]✓ Restored to end of T{turn_num}. "
             f"{n_files} file(s) in scratch, memory at {turn_num} turn(s).[/green]"
         )
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # HISTORY-ONLY TRUNCATION  (used by /rerun - does NOT touch scratch/)
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def truncate_history_only(self, turn_num: int, agent, keep_tail: bool = False) -> str:
         """
@@ -822,9 +822,9 @@ class TurnStateManager:
         except Exception:
             return None
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # /turns - formatted timeline
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def list_turns(self) -> str:
         """Return a Rich-formatted turn timeline for /turns command."""
@@ -890,9 +890,9 @@ class TurnStateManager:
         lines.append("─" * 72)
         return "\n".join(lines)
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # CLEAR ALL - called by /reset
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def clear_all(self):
         """

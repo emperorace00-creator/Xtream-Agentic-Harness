@@ -34,10 +34,10 @@ up to the last 20 turns, via `/restore N`.
 ```mermaid
 graph TD
     %% Catppuccin Latte (Light) Theme
-    classDef entry fill:#e6e9ef,stroke:#8839ef,stroke-width:2px,color:#4c4f69,rx:8px,ry:8px;
+    classDef entry fill:#e6e9ef,stroke:#cba6f7,stroke-width:2px,color:#4c4f69,rx:8px,ry:8px;
     classDef core fill:#e6e9ef,stroke:#ea76cb,stroke-width:2px,color:#4c4f69,rx:8px,ry:8px;
     classDef agent fill:#eff1f5,stroke:#7287fd,stroke-width:2px,color:#4c4f69,rx:8px,ry:8px;
-    classDef storage fill:#eff1f5,stroke:#df8e1d,stroke-width:2px,color:#4c4f69,rx:8px,ry:8px;
+    classDef storage fill:#eff1f5,stroke:#dd7878,stroke-width:2px,color:#4c4f69,rx:8px,ry:8px;
     classDef sandbox fill:#f2e9e1,stroke:#dd7878,stroke-width:2px,color:#4c4f69,rx:8px,ry:8px;
 
     %% Nodes
@@ -58,8 +58,8 @@ graph TD
         DocSearch["DocSearchAgent<br/>(RAG pipeline)"]:::agent
         SearchHist["SearchHistoryAgent"]:::agent
         FileOps["📁 FileOpsAgent<br/>(str_replace, search_in_file)"]:::agent
+        CodeSearch["CodeSearchAgent<br/>(Tree-sitter + Vector Embed)"]:::agent
         Workspace["WorkspaceTracker<br/>(BM25 fallback & sync)"]:::agent
-        CodeSearch["CodeSearchAgent<br/>(Tree-sitter + Codestral)"]:::agent
     end
     
     Emperor --> Docker
@@ -67,15 +67,12 @@ graph TD
     Emperor --> SearchHist
     Emperor --> FileOps
     
-    FileOps --> Workspace
     FileOps --> CodeSearch
+    FileOps --> Workspace
 
     %% Subgraph styling to remove default yellow background
     style Core fill:none,stroke:#b4befe,stroke-width:2px,stroke-dasharray: 5 5
 ```
-
-`EmperorAgent` also owns `SearchHistoryAgent`, `ToolCallSummarizer`, and
-`GlobalHistoryWriter` - see Operations & UI and State Management below.
 
 ## Features
 

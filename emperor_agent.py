@@ -38,9 +38,9 @@ from tool_handlers import ToolHandlersMixin
 from llm_backends import LLMBackendsMixin
 from renderer import print_smart_response, RULE_STYLE
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # SYSTEM PROMPT
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 _BASE_SYSTEM_PROMPT = """You are an assistant.
 
@@ -80,9 +80,9 @@ If everything looks good — say "All good".
 """
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # AGENT
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
     """
@@ -95,7 +95,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
 
     def __init__(self, api_key_ignored=None, ocr_agent=None, docker_available: bool = False):
         try:
-            # ── Google backend ─────────────────────────────────────────────────
+            # Google backend
             # Load a pool of keys from GOOGLE_API_KEY_FILE_POOL (one per line).
             # If the pool file is absent or empty, fall back to the single key
             # from GOOGLE_API_KEY_FILE so existing setups are unaffected.
@@ -120,14 +120,14 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
                 genai.Client(api_key=_pool_keys[0]) if _pool_keys else None
             )
 
-            # ── NIM backend ────────────────────────────────────────────────────
+            # NIM backend
             self.nim_api_key = read_api_key(config.NVIDIA_API_KEY_FILE, silence_warning=True)
             self.nim_base_url = config.NVIDIA_BASE_URL
             self.chat_history = []
             self.last_token_count = 0
             self._load_history()
 
-            # ── Cloudflare backend ─────────────────────────────────────────────
+            # Cloudflare backend
             self.cf_api_key = read_api_key(config.CLOUDFLARE_API_KEY_FILE, silence_warning=True)
             self.cf_base_url = f"https://api.cloudflare.com/client/v4/accounts/{config.CLOUDFLARE_ACCOUNT_ID}/ai/v1"
             # Bug 7: CLOUDFLARE_ACCOUNT_ID defaults to "" when unset, which silently
@@ -141,14 +141,14 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
                     "the Cloudflare backend (/cf) will be unavailable until it is.[/yellow]"
                 )
 
-            # ── Local backend (llama-server) ────────────────────────────────────
+            # Local backend (llama-server)
             self.local_api_key = (
                 read_api_key(config.LOCAL_API_KEY_FILE, silence_warning=True)
                 if config.LOCAL_API_KEY_FILE else None
             )
             self.local_base_url = config.LOCAL_BASE_URL
 
-            # ── Token Router backend ────────────────────────────────────────────
+            # Token Router backend
             self.tr_api_key = read_api_key(config.TOKEN_ROUTER_API_KEY_FILE, silence_warning=True)
 
             self.workspace_tracker = WorkspaceTracker(workspace_path=config.SCRATCH_DIR)
@@ -239,7 +239,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             _default_groups = {"web", "bash"} if docker_available else {"web"}
             self._active_groups: set = _default_groups
 
-            # ── Lazy pre-turn scratch backup (item 4 / SP-1) ─────────────────────
+            # Lazy pre-turn scratch backup (item 4 / SP-1)
             # Previously start.py ran a synchronous shutil.copytree() of the whole
             # scratch/ dir before EVERY tool-mode turn, even pure-text turns that
             # never touch a file. Now the backup is created lazily, on a background
@@ -258,9 +258,9 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             console.print(f"🚨 Init failed: {e}")
             raise
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # GOOGLE KEY ROTATION
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def _rotate_google_key(self) -> None:
         """Advance to the next key in the pool and rebuild google_client.
@@ -281,9 +281,9 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             f"#{self._google_key_index + 1}/{len(pool)}[/yellow]"
         )
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # TOOL GROUP TOGGLES
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
 
     @property
@@ -515,9 +515,9 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             f"  vision:   {config.SUPPORTS_VISION}"
         )
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # GENERATION - STATEFUL (main entry point from start.py)
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
 
     def generate_with_history(self, prompt, web_agent, token_counter=None, images=None):
@@ -633,9 +633,9 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             user_query=raw_query
         )
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # SELF-REVIEW
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def generate_review(self, review_prompt: str, web_agent, token_counter=None) -> str:
         """
@@ -648,7 +648,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         all saved and restored in a finally block so the next real turn sees
         exactly the same state as before this call. Never writes to TurnStateManager.
         """
-        # ── State preservation ──────────────────────────────────────────────
+        # State preservation
         # Read (don't consume) the prior-turn summaries so the reviewer sees
         # the same [LAST TURN ACTIONS] context a real turn would see - but
         # we restore them afterward so the next real turn still gets them.
@@ -670,7 +670,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         console.print(f"\n[cyan] ✦ [/cyan][dim]{config.ACTIVE_BACKEND} ({config.THINKING_TYPE} thinking)...[/dim]")
 
         try:
-            # ── Build messages ──────────────────────────────────────────────
+            # Build messages
             if self._active_groups:
                 _reconcile_thread = threading.Thread(
                     target=self.workspace_tracker.reconcile_workspace,
@@ -688,7 +688,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
                 if msg["role"] in ("user", "assistant"):
                     messages.append(msg)
 
-            # ── Context block - identical to generate_with_history ──────────
+            # Context block - identical to generate_with_history
             if self._active_groups:
                 uploads_summary = self._scan_uploads_folder(pdf_active="pdf" in self._active_groups)
                 _reconcile_thread.join(timeout=2.0)
@@ -732,7 +732,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             return pass1_response
 
         finally:
-            # ── State restoration ───────────────────────────────────────────
+            # State restoration
             # Always runs - success, cancellation (Ctrl+C), or error.
             self.last_tool_summary      = _saved_tool_summary
             self.last_cancelled_summary = _saved_cancelled_summary
@@ -745,9 +745,9 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             self._images_shown_this_turn = []   # review is not a real turn; discard any images it showed
             self.last_think_trace = ""           # discard any reviewer thinking; main model trace already consumed
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # INTERRUPT RESUME
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def resume_from_interrupt(self, guidance: str, web_agent, token_counter=None,
                                thinking_paste: str = "") -> str:
@@ -818,9 +818,9 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             resume_mode=True,
         )
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # PSEUDO-TOOL PARSER
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     # Every tool name the runtime knows about. Used to scope the regex scan so
     # arbitrary XML in user files never gets misidentified as a tool call.
@@ -850,7 +850,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         calls = []
 
         for tool_name in self._get_active_known_tools():
-            # ── Format 1: self-closing  <tool_name attr="val" attr2="val2"/>
+            # Format 1: self-closing  <tool_name attr="val" attr2="val2"/>
             for m in re.finditer(
                 rf'<{tool_name}((?:\s+[^>]*?)?)/>',
                 content, re.DOTALL
@@ -858,7 +858,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
                 args = self._parse_xml_attrs(m.group(1))
                 calls.append({"fn": tool_name, "args": args, "pos": m.start()})
 
-            # ── Formats 2 & 3: block  <tool_name ...>...</tool_name>
+            # Formats 2 & 3: block  <tool_name ...>...</tool_name>
             # Use a stack-based parser to gracefully handle nested identical tags
             open_pattern = rf'<{tool_name}((?:\s[^>]*)??)(?<!/)>'
             close_pattern = rf'</{tool_name}>'
@@ -957,9 +957,9 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         stripped = inner.strip()
         return {"query": stripped} if stripped else {}
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # INNER GENERATION LOOP
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def _parse_kimi_native_tools(self, content: str, offset: int = 0) -> list:
         """
@@ -1083,7 +1083,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
 
 
 
-            # ── Parse pseudo-tool tags from model output ───────────────────
+            # Parse pseudo-tool tags from model output
             # Scan clean_content ONLY - the model's actual visible answer,
             # not its thinking/reasoning text. Tags inside <think> blocks or
             # a native reasoning field are NOT executed.
@@ -1139,9 +1139,9 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
                             existing_fns.add(key)
                     pseudo_calls.sort(key=lambda x: x["pos"])
 
-            # ── Terminal condition: no tool tags found ────────────────────────
+            # Terminal condition: no tool tags found
             if not pseudo_calls:
-                # ── Alien format detection ────────────────────────────────────
+                # Alien format detection
                 # Gate: only check when no tool has already run this turn
                 # (_current_tool_call_log empty = this is the first/only response)
                 # and we haven't already sent a nudge (prevents infinite loop).
@@ -1198,18 +1198,18 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
                                 ),
                             })
                             continue   # re-enter generation loop
-                # ── Normal terminal path ──────────────────────────────────────
+                # Normal terminal path
                 self._partial_messages = None
                 self.last_tool_summary = self.summarizer.summarize_turn(self._current_tool_call_log)
                 self.last_think_trace = "\n\n---\n\n".join(_turn_thinking)
                 return clean_content or raw_content
 
-            # ── Execute pseudo-tool calls in order ───────────────────────────
+            # Execute pseudo-tool calls in order
             if len(pseudo_calls) > config.MAX_TOOL_CALLS_PER_TURN:
                 console.print(f"[yellow]⚠️ Truncating to {config.MAX_TOOL_CALLS_PER_TURN} tool calls[/yellow]")
                 pseudo_calls = pseudo_calls[:config.MAX_TOOL_CALLS_PER_TURN]
 
-            # ── Print narrative text that accompanied tool calls ───────────────
+            # Print narrative text that accompanied tool calls
             # When the model writes prose alongside tool tags (e.g. "Let me
             # check the file first.\n<view_lines>..."), that text is stored in
             # history but was never shown in the terminal. Strip all tool XML
@@ -1224,7 +1224,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
                 console.print()
                 self._pending_narratives.append(_narrative)
 
-            # ── Append assistant turn early for interrupt safety ──────────────
+            # Append assistant turn early for interrupt safety
             # This ensures that if the user hits Ctrl+C during a tool call, the
             # assistant's decision to call tools is already saved in history.
             #
@@ -1348,9 +1348,9 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             )
         return result.strip()
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # HISTORY & MEMORY
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def _load_history(self):
         if os.path.exists(config.CHAT_HISTORY_FILE):

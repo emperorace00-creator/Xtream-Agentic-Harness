@@ -33,7 +33,7 @@ class FileOpsAgent:
                          False = grep (default)
         """
 
-        # ── Semantic mode ──────────────────────────────────────────────────────
+        # Semantic mode
         if semantic:
             # Primary: Codestral Embed semantic code search
             if self.code_search_agent:
@@ -65,7 +65,7 @@ class FileOpsAgent:
                 return "\n".join(lines)
             return "Semantic search is disabled (no tracker attached)."
 
-        # ── Grep mode (original behaviour) ────────────────────────────────────
+        # Grep mode (original behaviour)
         results = []
         search_dirs = [config.SCRATCH_DIR, config.UPLOADS_FOLDER] 
         
@@ -317,7 +317,7 @@ class FileOpsAgent:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    # ── Helper methods ────────────────────────────────────────────────────
+    # Helper methods
 
     def _resolve_path(self, filepath: str) -> str:
         """Resolve file path, translating container paths to host paths first.

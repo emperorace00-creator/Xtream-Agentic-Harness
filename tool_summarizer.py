@@ -78,7 +78,7 @@ class ToolCallSummarizer:
             console.print(f"⚠️  [yellow]tool_summarizer: failed to summarize '{fn}': {e}[/yellow]")
             return f"{fn}(...) → [summary error]"
 
-    # ─── Per-tool handlers ─────────────────────────────────────────────────────
+    # Per-tool handlers
 
     def _url_search(self, args: dict, result: str) -> str:
         """Check for [SOURCE:] prefix to determine success."""

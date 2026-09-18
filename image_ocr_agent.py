@@ -70,7 +70,7 @@ from google.genai import types
 import config
 from utils import read_api_key, MIME_MAP, backoff_wait, mime_type_from_url, console
 
-# ── Concurrency / retry constants ─────────────────────────────────────────────
+# Concurrency / retry constants
 # Bug 20 / BUG-A1: deterministic client-side errors (bad request / payload too
 # large) indicate a problem with the specific image/request, not a provider
 # outage - subsequent pages should still be attempted against the same
@@ -90,7 +90,7 @@ GOOGLE_MAX_CONCURRENCY = 16   # ceiling for Google's AIMD increase - deliberatel
 MIN_CONCURRENCY     = 1   # floor for AIMD decrease
 INCREASE_AFTER      = 3   # consecutive successes needed to bump concurrency by 1
 
-# ── Circuit breaker constants ─────────────────────────────────────────────────
+# Circuit breaker constants
 CONSEC_FAILURES_TO_OPEN = 4     # consecutive full-chain failures before a
                                  # provider's circuit opens (stops being tried)
 BREAKER_BASE_COOLDOWN   = 30    # seconds before the first half-open probe
@@ -99,7 +99,7 @@ BREAKER_MAX_COOLDOWN    = 300   # cooldown ceiling (doubles on each failed probe
 
 
 
-# ── Strict transcription prompt ───────────────────────────────────────────────
+# Strict transcription prompt
 _OCR_SYSTEM_PROMPT = r"""\
 You are a transcription engine. Read the image. Write down exactly what is there in it. 
 
@@ -157,9 +157,9 @@ _OCR_USER_PROMPT = (
 )
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # ADAPTIVE CONCURRENCY GATE  (AIMD)
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 class _ConcurrencyGate:
     """
@@ -202,7 +202,7 @@ class _ConcurrencyGate:
         self._max       = maximum
         self._successes = 0   # consecutive successful API calls
 
-    # ── Public gate interface ──────────────────────────────────────────────────
+    # Public gate interface
 
     def acquire(self):
         """Block until a concurrency slot is available, then claim it."""
@@ -217,7 +217,7 @@ class _ConcurrencyGate:
             self._inflight -= 1
             self._cond.notify_all()
 
-    # ── Feedback signals ──────────────────────────────────────────────────────
+    # Feedback signals
 
     def report_success(self):
         """Call after every successful API response. Increases desired after INCREASE_AFTER streak."""
@@ -261,9 +261,9 @@ class _ConcurrencyGate:
             return max(0, self._desired - self._inflight)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # CIRCUIT BREAKER  (per-provider, distinct from the AIMD gate)
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 class _CircuitBreaker:
     """
@@ -417,7 +417,7 @@ class ImageOCRAgent:
             console.print(f"🚨 [bold red]ImageOCRAgent init failed: {e}[/bold red]")
             raise
 
-    # ── Public entry point ────────────────────────────────────────────────────
+    # Public entry point
 
     def process_images(self, image_input: str) -> list:
         """
@@ -490,7 +490,7 @@ class ImageOCRAgent:
 
         return [r for r in results if r is not None]
 
-    # ── Outer retry rounds wrapper ─────────────────────────────────────────────
+    # Outer retry rounds wrapper
 
     def _call_with_rounds(self, image_url: str, label: str) -> tuple:
         self._last_failure_was_client_error = False
@@ -529,7 +529,7 @@ class ImageOCRAgent:
         )
         return "[OCR ERROR — all tiers exhausted across all retry rounds]", "[ERROR]"
 
-    # ── Dispatcher: pick provider order for this round ────────────────────────
+    # Dispatcher: pick provider order for this round
 
     def _choose_order(self) -> list:
         """
@@ -554,7 +554,7 @@ class ImageOCRAgent:
             return ["google"]
         return []
 
-    # ── Try every model in one provider's list before giving up on it ─────────
+    # Try every model in one provider's list before giving up on it
 
     def _try_provider_models(self, provider: str, image_url: str, label: str) -> tuple | None:
         """
@@ -620,7 +620,7 @@ class ImageOCRAgent:
             self._last_failure_was_client_error = True
         return None
 
-    # ── Single-round dispatch across providers ─────────────────────────────────
+    # Single-round dispatch across providers
 
     def _call_with_fallback(self, image_url: str, label: str) -> tuple | None:
         """
@@ -644,7 +644,7 @@ class ImageOCRAgent:
 
         return None
 
-    # ── NVIDIA NIM call  (gated) ───────────────────────────────────────────────
+    # NVIDIA NIM call  (gated)
 
     def _call_nim_ocr(self, model: str, image_url: str) -> str:
         """
@@ -708,7 +708,7 @@ class ImageOCRAgent:
         finally:
             self._nim_gate.release()
 
-    # ── Google API call  (gated) ───────────────────────────────────────────────
+    # Google API call  (gated)
 
     def _call_google_ocr(self, model: str, image_url: str) -> str:
         """
@@ -783,7 +783,7 @@ class ImageOCRAgent:
         finally:
             self._google_gate.release()
 
-    # ── Multi-image NIM call  (gated) ──────────────────────────────────────────
+    # Multi-image NIM call  (gated)
 
     def _call_nim_ocr_multi(self, model: str, image_urls: list) -> str:
         """
@@ -845,7 +845,7 @@ class ImageOCRAgent:
         finally:
             self._nim_gate.release()
 
-    # ── Multi-image Google call  (gated) ───────────────────────────────────────
+    # Multi-image Google call  (gated)
 
     def _call_google_ocr_multi(self, model: str, image_urls: list) -> str:
         """
@@ -914,7 +914,7 @@ class ImageOCRAgent:
         finally:
             self._google_gate.release()
 
-    # ── Group retry chain (mirrors single-image chain, uses multi-image calls) ──
+    # Group retry chain (mirrors single-image chain, uses multi-image calls)
 
     def _try_provider_models_group(self, provider: str, image_urls: list,
                                    label: str) -> tuple | None:
@@ -1025,7 +1025,7 @@ class ImageOCRAgent:
         )
         return "[OCR ERROR — all tiers exhausted across all retry rounds]", "[ERROR]"
 
-    # ── Public group entry point ───────────────────────────────────────────────
+    # Public group entry point
 
     def process_image_group(self, image_input: str) -> dict:
         """
@@ -1085,7 +1085,7 @@ class ImageOCRAgent:
             "markdown": markdown,
         }
 
-    # ── Image resolver ─────────────────────────────────────────────────────────
+    # Image resolver
 
     def _resolve(self, item: str) -> tuple:
         """Resolve an image input to (display_source, url_or_data_uri)."""

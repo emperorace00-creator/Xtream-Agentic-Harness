@@ -43,7 +43,7 @@ class SearchHistoryAgent:
     def __init__(self, histories_dir: str = None):
         self.histories_dir = histories_dir or config.CHAT_HISTORIES_DIR
 
-    # ── Public entry point ──────────────────────────────────────────────────
+    # Public entry point
 
     def search(self, query: str, top_k: int = 5) -> str:
         if not os.path.isdir(self.histories_dir):
@@ -79,7 +79,7 @@ class SearchHistoryAgent:
         final = self._rerank(query, candidates, top_k)
         return self._format_results(query, final)
 
-    # ── Step 1: session discovery ───────────────────────────────────────────
+    # Step 1: session discovery
 
     def _list_sessions(self) -> list:
         return sorted(
@@ -91,7 +91,7 @@ class SearchHistoryAgent:
             reverse=True,
         )
 
-    # ── Step 2: parsing ──────────────────────────────────────────────────────
+    # Step 2: parsing
 
     def _parse_turns(self, fp: str) -> list:
         """
@@ -133,7 +133,7 @@ class SearchHistoryAgent:
             pass
         return turns
 
-    # ── Sidecar cache (one <session>.jsonl.idx.json per session) ────────────
+    # Sidecar cache (one <session>.jsonl.idx.json per session)
 
     def _load_sidecar(self, fp: str) -> list:
         """Load existing turn index from sidecar. Returns [] if missing/corrupt."""
@@ -155,7 +155,7 @@ class SearchHistoryAgent:
         if not save_json_atomic(sidecar, entries):
             console.print(f"   [yellow]idx sidecar save failed for {fp}[/yellow]")
 
-    # ── Step 3: incremental turn-level indexing ─────────────────────────────
+    # Step 3: incremental turn-level indexing
     #
     # Only embeds turns that aren't in the sidecar yet, then appends them.
     # This means the first search after a busy session costs one API call;
@@ -268,7 +268,7 @@ class SearchHistoryAgent:
 
             self._save_sidecar(fp, existing + new_entries)
 
-    # ── Step 4: scoring ──────────────────────────────────────────────────────
+    # Step 4: scoring
 
     def _score_candidates(self, jsonl_files: list, query: str, query_vec) -> list:
         """
@@ -317,7 +317,7 @@ class SearchHistoryAgent:
 
         return candidates
 
-    # ── Step 5: reranking ────────────────────────────────────────────────────
+    # Step 5: reranking
     #
     # Takes the top RERANK_POOL candidates by embedding/keyword score and
     # reranks them with the NVIDIA cross-encoder. The reranker sees the actual
@@ -335,7 +335,7 @@ class SearchHistoryAgent:
         reranked = [top_candidates[i] for i in order]
         return reranked[:top_k]
 
-    # ── Step 6: formatting ───────────────────────────────────────────────────
+    # Step 6: formatting
     #
     # Full turn shown if user + assistant < FULL_THRESHOLD chars combined.
     # Otherwise a truncated preview + a view_lines hint with exact line

@@ -2,55 +2,38 @@
 """
 train_alien_format_classifier.py
 
-Binary classifier for the "alien tool format" problem: the model emitted its
-OWN native tool-call syntax (DeepSeek DSML, Qwen/Hermes <tool_call>, MiniMax
-<minimax:tool_call>, an older DeepSeek-V3/R1 <|tool_call_begin|> block, etc.)
-instead of this project's pseudo-XML "powers" format - as opposed to just
-mentioning a tool name in prose, quoting a past result, or showing an example
-in a code fence.
+Trains a small logistic-regression classifier that catches "alien" tool-call
+formats - cases where the model emits its own native syntax (DeepSeek DSML,
+Qwen/Hermes <tool_call>, MiniMax <minimax:tool_call>, etc.) instead of this
+project's pseudo-XML format. It's not trying to catch every malformed
+response, just the structural case: a real tool-call block in the wrong
+syntax, as opposed to a tool name mentioned in prose or shown in a code
+fence as an example.
 
-SCOPE (read this before wiring it in):
-  This model answers ONE narrow question: "does this response contain a
-  STRUCTURAL alien tool-call block?" It is meant to run only on the sliver of
-  turns where your existing deterministic checks are ambiguous:
-    - pseudo_calls == []                     (your XML parser found nothing)
-    - self._current_tool_call_log == []      (no tool has already run this turn
-                                                - rules out final-synthesis prose)
-    - at least one known tool name appears   (cheap pre-filter, in this file
-      somewhere in the text                    as `pref_known_tool_hits`)
-  It does NOT handle "model said 'let me search' and then wrote nothing" -
-  that's a phrase-presence check, not a format-detection problem, and belongs
-  in plain code, not a classifier.
+Only meant to run on the ambiguous slice of turns - no pseudo-calls parsed,
+no tool already run this turn, but a known tool name shows up somewhere in
+the text. Everything else (e.g. "model said 'let me search' then wrote
+nothing") is a plain string check elsewhere, not something this needs to
+learn.
 
-WHY THIS DESIGN (vs. Flash Lite / an LLM judge):
-  This only needs to fire on the ambiguous slice of turns, so a ~50KB local
-  model is enough. No API dependency in your retry path, no added latency,
-  no external rate limit, and it improves for free as you log real
-  production judgments (see RETRAINING ON REAL DATA below).
+A local model made more sense here than calling out to an LLM judge - it
+only has to fire on that narrow ambiguous slice, so a ~50KB model is plenty,
+and it costs nothing per call.
 
-USAGE
-  pip install scikit-learn scipy numpy joblib
-  python train_alien_format_classifier.py --train
-  python train_alien_format_classifier.py --predict "<tool_call>\n{\"name\": \"quick_search\", ...}"
-  python train_alien_format_classifier.py --eval-examples   # prints the held-out test cases it got wrong
+Usage:
+    pip install scikit-learn scipy numpy joblib
+    python train_alien_format_classifier.py --train
+    python train_alien_format_classifier.py --predict "<tool_call>...</tool_call>"
+    python train_alien_format_classifier.py --eval-examples
 
-OUTPUT
-  alien_format_clf.joblib   <- everything predict() needs, self-contained
+Writes alien_format_clf.joblib (self-contained - vectorizer + model).
 
-RETRAINING ON REAL DATA (do this once you have production traffic)
-  This bootstrap trains entirely on synthetic examples generated from
-  documented tool-call formats (cited in comments below). That's a
-  reasonable cold start, but it WILL have blind spots - most importantly,
-  totally novel syntaxes from model families not covered here, and
-  "code block explaining the format" negatives it wasn't shown a similar
-  case for. Log every case this fires on (or nearly fires on) in
-  production, along with the correct label once you know it, as JSONL:
-      {"text": "...", "label": 1}
-  one per line, into real_examples.jsonl, then:
-      python train_alien_format_classifier.py --train --extra real_examples.jsonl
-  Real examples are oversampled (see REAL_EXAMPLE_OVERSAMPLE below) so a
-  few hundred real ones start to dominate the decision boundary over the
-  synthetic bulk.
+Once there's real production traffic, log the cases this fires (or nearly
+fires) on as JSONL ({"text": ..., "label": 1}) into real_examples.jsonl and
+retrain with --extra real_examples.jsonl. The synthetic data here is a cold
+start and will miss genuinely novel syntaxes; real examples get oversampled
+(REAL_EXAMPLE_OVERSAMPLE below) so a few hundred of them can outweigh the
+synthetic bulk.
 """
 
 import argparse
@@ -72,24 +55,14 @@ RNG = random.Random(1234)
 
 MODEL_PATH = Path(__file__).parent / "alien_format_clf.joblib"
 
-# GUESS, NOT VERIFIED - point this at wherever your real chat history is
-# actually stored (in emperor_agent.py that's `config.CHAT_HISTORY_FILE` +
-# `self.global_history.write_turn(...)`, which this script has not seen the
-# internals of). Mining is OFF by default (opt in with --mine) until you've
-# either confirmed this path/format is right or edited it below.
-CHAT_DIR   = Path(__file__).parent / "chat_histories"
-REAL_EXAMPLE_OVERSAMPLE = 8   # each real logged example is repeated this many
-                              # times relative to one synthetic example, so
-                              # a modest amount of real data can outweigh the
-                              # synthetic bulk once you start collecting it.
+# Not confirmed against the real history path/format yet - double check
+# against config.CHAT_HISTORY_FILE / global_history.write_turn before
+# relying on --mine. Off by default for that reason.
+CHAT_DIR = Path(__file__).parent / "chat_histories"
+REAL_EXAMPLE_OVERSAMPLE = 8  # repeat each real example this many times vs. one synthetic one
 
-# ════════════════════════════════════════════════════════════════════════
-# YOUR PROJECT'S TOOL SCHEMA
 # Mirrors GROUP_TOOLS_UNION / STRUCTURED / SIMPLE_PARAM in
-# core_tool_definitions.py + emperor_agent.py. Edit this if your tool list
-# changes - it drives both the "your own correct format" negatives and the
-# realistic args used inside the alien-format positives.
-# ════════════════════════════════════════════════════════════════════════
+# core_tool_definitions.py - keep in sync if the tool list changes.
 
 TOOLS = {
     "quick_search":     {"kind": "simple", "param": "query"},
@@ -160,10 +133,9 @@ def random_args(tool: str) -> dict:
     return {f: _val_for(tool, f) for f in required}
 
 
-# ════════════════════════════════════════════════════════════════════════
-# ALIEN FORMAT RENDERERS  (positives)
-# Each takes (tool_name, args) -> rendered native-format string.
-# Sources, so the shapes are real and not guessed:
+# --- Alien format renderers (positives) ---
+# Each takes (tool_name, args) -> rendered native-format string. Shapes are
+# copied from real docs/output, not guessed, sources below:
 #   - DeepSeek V3.2/V4 DSML:   docs.vllm.ai/.../parser/deepseek_v32
 #   - DeepSeek V3/R1 (older):  docs.vllm.ai/.../deepseekv3_tool_parser
 #   - Qwen/Hermes <tool_call>: qwen.readthedocs.io/framework/function_call
@@ -182,12 +154,10 @@ def random_args(tool: str) -> dict:
 #   - ASCII-pipe DSML:         <|DSML|> with ASCII | not fullwidth ｜
 #   - Kimi native - NOT included here on purpose: your code already parses
 #     it correctly (_parse_kimi_native_tools), so it's not an "alien" case.
-# ════════════════════════════════════════════════════════════════════════
+# ----
 
 def _render_deepseek_dsml(tool, args):
-    # Real DeepSeek DSML uses U+FF5C FULLWIDTH VERTICAL LINE (｜), not ASCII |.
-    # The outer wrapper alternates between the two documented tag names so the
-    # classifier sees both variants during training.
+    # Uses U+FF5C fullwidth vertical line (｜), not ASCII |, per real output.
     outer = RNG.choice(["tool_calls", "function_calls"])
     params = "\n".join(
         f'<｜DSML｜parameter name="{k}" string="true">{v}</｜DSML｜parameter>' for k, v in args.items()
@@ -220,25 +190,21 @@ def _render_minimax(tool, args):
 
 
 def _render_raw_json_leak(tool, args):
-    # A model occasionally just dumps the OpenAI-style function_call object
-    # as plain text instead of any wrapper at all.
+    # OpenAI-style function_call object dumped as plain text, no wrapper.
     return json.dumps({"type": "function", "function": {"name": tool, "arguments": args}})
 
 
 def _render_pythonic(tool, args):
-    # Newer "pythonic" tool-call convention (e.g. Olmo3-style), wrapped in
-    # <function_calls> tags.
+    # "Pythonic" convention (Olmo3-style), wrapped in <function_calls> tags.
     arg_str = ", ".join(f'{k}="{v}"' for k, v in args.items())
     return f'<function_calls>\n{tool}({arg_str})\n</function_calls>'
 
 
 def _render_glm(tool, args):
-    # GLM-4.5/4.6: <tool_call>{name}<arg_key>{key}</arg_key><arg_value>{value}</arg_value>...
-    # Note the outer tag NAME collides with Hermes's <tool_call> - the
-    # internal structure (arg_key/arg_value pairs, no JSON) is what
-    # distinguishes it, which is a genuinely useful case for the classifier
-    # to see (same wrapper token, different internals).
-    # Source: github.com/zai-org/GLM-4.5/blob/main/resources/glm_4.6_tir_guide.md
+    # GLM-4.5/4.6. Outer tag collides with Hermes's <tool_call>; the
+    # arg_key/arg_value internals (no JSON) are what tell them apart, which
+    # is a useful case to have.
+    # github.com/zai-org/GLM-4.5/blob/main/resources/glm_4.6_tir_guide.md
     params = "".join(f'<arg_key>{k}</arg_key><arg_value>{v}</arg_value>' for k, v in args.items())
     return f'<tool_call>{tool}{params}</tool_call>'
 
@@ -373,24 +339,15 @@ ALIEN_RENDERERS = [
 
 
 def _truncate_mid_stream(s: str) -> str:
-    """
-    Simulate a real, commonly-reported failure mode: the model starts
-    emitting an alien tool call and generation stops (hits EOS / max
-    tokens / gets cut) before the closing tag - e.g. the llama.cpp issue
-    where GLM/MiniMax/Qwen3-Coder models sometimes emit only a partial
-    tool-call block. Cutting at a random point (never past the halfway
-    mark, so the fragment is still recognizably alien) trains the
-    classifier not to require a complete, well-closed block to be
-    confident.
-    """
+    """Cut a rendered call short (never past the halfway point), simulating
+    generation getting cut off before the closing tag - a real failure mode
+    on GLM/MiniMax/Qwen3-Coder via llama.cpp."""
     cut = RNG.randint(max(1, len(s) // 4), max(2, len(s) // 2))
     return s[:cut]
 
-# ════════════════════════════════════════════════════════════════════════
-# YOUR PROJECT'S OWN (correct) FORMAT - used for negatives so the model
-# learns "this shape is fine", mirroring _parse_pseudo_tools in
-# emperor_agent.py.
-# ════════════════════════════════════════════════════════════════════════
+
+# This project's own (correct) format, used for negatives - mirrors
+# _parse_pseudo_tools in emperor_agent.py.
 
 def _render_own_format(tool, args):
     spec = TOOLS[tool]
@@ -403,12 +360,8 @@ def _render_own_format(tool, args):
     return f'<{tool}>{inner}</{tool}>'
 
 
-# ════════════════════════════════════════════════════════════════════════
-# SURROUNDING PROSE POOLS - real responses aren't bare tags, they have
-# narrative text around them. Sampling this in gives the vectorizer
-# something realistic to generalize over instead of memorizing 7 fixed
-# templates.
-# ════════════════════════════════════════════════════════════════════════
+# Prose pools - real responses have narrative text around the tags, not
+# just the bare call, so mix that in rather than training on isolated tags.
 
 LEAD_IN_TOOLCALL = [
     "Let me check that for you.", "I'll look into this now.",
@@ -499,10 +452,6 @@ def _wrap_code_fence(s: str) -> str:
     return f"```\n{s}\n```"
 
 
-# ════════════════════════════════════════════════════════════════════════
-# EXAMPLE GENERATION
-# ════════════════════════════════════════════════════════════════════════
-
 def gen_positive() -> str:
     """An alien-format tool call, optionally mid-turn after correct calls."""
     tool = RNG.choice(TOOL_NAMES)
@@ -533,18 +482,13 @@ def gen_positive() -> str:
 def gen_negative() -> str:
     """One of several hard-negative families, roughly evenly weighted."""
     kind = RNG.choice([
-        "own_format", "own_format", "own_format",   # weighted up: this is
-                                                       # the single most
-                                                       # important negative
+        "own_format", "own_format", "own_format",  # most important negative, weighted up
         "final_synthesis", "final_synthesis",
         "explain_format", "explain_format",
         "prose_mention_no_tag",
         "unrelated",
         "system_echo",
-        "json_yaml_prose", "json_yaml_prose",   # JSON/YAML that is NOT a
-                                                  # tool call - teaches the
-                                                  # classifier that mere JSON
-                                                  # structure isn't enough
+        "json_yaml_prose", "json_yaml_prose",  # JSON/YAML that isn't actually a tool call
     ])
 
     if kind == "own_format":
@@ -607,32 +551,14 @@ def load_real_examples(path: Path):
 
 
 def mine_from_chat_histories() -> tuple[list, list]:
-    """
-    Scan chat_histories/*.jsonl for assistant messages that contain known tool
-    names and classify them as alien-format positives (label 1) or clean
-    negatives (label 0). Returns (texts, labels) ready for oversampling.
-
-    Only auto-labels the cases where a fixed regex is actually reliable
-    ground truth:
-      - has_correct_xml  -> 0   (matches your real parser's tag shape)
-      - has_sys_result    -> 0   (matches your own result-echo scaffolding)
-      - has_alien_marker (and NOT Kimi's real format) -> 1
-
-    Anything else - a known tool name present, but none of the above match -
-    is NOT auto-labeled. That "I don't recognize this shape" bucket is
-    exactly where a genuinely novel alien format would land, and trusting
-    the same regex to call it "clean" would silently teach the classifier
-    to ignore the one case mining is supposed to help it generalize to.
-    Those go to needs_review.jsonl instead, for you to label by hand before
-    they ever enter training.
-
-    Also explicitly excludes Kimi's native <|tool_call_begin|> format from
-    the positive bucket - your code already parses and executes that
-    correctly (_parse_kimi_native_tools), so labeling it "alien / needs a
-    nudge" would teach the classifier to flag a working code path.
-
-    Runs only when --mine is passed. Safe to call even if chat_histories/
-    does not exist (returns empty lists).
+    """Scan chat_histories/*.jsonl for assistant messages mentioning a known
+    tool, and auto-label the ones a regex can label reliably: correct XML or
+    a result-echo -> 0, an alien marker (excluding Kimi's real format, which
+    the parser already handles) -> 1. Anything else is ambiguous rather than
+    "clean" - guessing there would just teach the classifier to ignore the
+    exact novel-format cases mining is meant to catch, so those go to
+    needs_review.jsonl for manual labeling instead. Opt-in via --mine; a
+    no-op if chat_histories/ doesn't exist.
     """
     if not CHAT_DIR.exists():
         return [], []
@@ -721,42 +647,38 @@ def mine_from_chat_histories() -> tuple[list, list]:
     return texts, labels
 
 
-# ════════════════════════════════════════════════════════════════════════
-# ENGINEERED FEATURES
-# Char n-grams alone pick up the special-token morphology reasonably well
-# (`<|`, `:tool_call>`, `<invoke`, quote styles...), but these few explicit
-# booleans directly encode the highest-value structural signals so the
-# model doesn't have to re-derive them from scratch on ~3000 examples.
-# ════════════════════════════════════════════════════════════════════════
+# Engineered features on top of char n-grams - a few explicit booleans for
+# the highest-value structural signals, since ~3000 examples isn't a lot
+# for the vectorizer to re-derive them from on its own.
 
 _KNOWN_TOOL_RE = re.compile(r'\b(' + '|'.join(re.escape(t) for t in TOOL_NAMES) + r')\b')
 _ALIEN_MARKER_RE = re.compile(
     # Structural markers that are unambiguous signs of a native tool-call block.
     # ｜ = U+FF5C fullwidth vertical line (actual DeepSeek DSML production output)
     r'('
-    # ── DeepSeek ──────────────────────────────────────────────────────────
+    # DeepSeek
     r'<\|tool[▁_]'               # old V3/R1: <|tool▁calls▁begin|
     r'|tool_call_begin'           # old V3/R1 inner marker
     r'|<\|DSML\|'                 # DSML ASCII-pipe variant
     r'|<｜DSML｜'                  # DSML fullwidth ｜
-    # ── Qwen / Hermes ─────────────────────────────────────────────────────
+    # Qwen / Hermes
     r'|<tool_call>'               # Hermes, Qwen2.5, Qwen3, GLM
     r'|✿FUNCTION✿'             # legacy Qwen-Agent ✿FUNCTION✿
-    # ── MiniMax ───────────────────────────────────────────────────────────
+    # MiniMax
     r'|<minimax:tool_call>'       # MiniMax XML style
     r'|\[TOOL_CALL\]'             # MiniMax bracket style
-    # ── Claude ────────────────────────────────────────────────────────────
+    # Claude
     r'|<invoke\s+name='           # Claude / Anthropic XML
     r'|function_calls>'           # Claude / Pythonic wrapper
-    # ── Gemma / FunctionGemma ─────────────────────────────────────────────
+    # Gemma / FunctionGemma
     r'|<start_function_call>'     # Gemma 3 / FunctionGemma
     r'|<\|tool_call>'             # Gemma 4 thinking token
     r'|call:[a-z_]+\{'            # Gemma call:func{...} syntax
-    # ── Nemotron ──────────────────────────────────────────────────────────
+    # Nemotron
     r'|<\|python_tag\|>'          # Llama-based Nemotron
     r'|<toolcall>'                # Native Nemotron-4/Mini
     r'|<extra_id_'                # Native Nemotron system markers
-    # ── Misc / generic ────────────────────────────────────────────────────
+    # Misc / generic
     r'|<function='                # Qwen3-Coder nested
     r'|\|tool\|'                  # pipe-delimited format
     r'|"tool"\s*:'                # plain JSON blob with "tool" key
@@ -830,17 +752,12 @@ class AlienFormatDetector:
         return (p >= threshold), p
 
     def save(self, path=MODEL_PATH):
-        # Ensure the class is pickled as train_alien_format_classifier.AlienFormatDetector
-        # and NOT as __main__.AlienFormatDetector.
-        #
-        # Problem: when the script runs directly (__name__ == '__main__'), the class
-        # lives in __main__ and pickle records it there.  When emperor_agent loads it,
-        # __main__ is emperor_agent - no AlienFormatDetector → AttributeError.
-        #
-        # Python 3.14 fix: register the current __main__ module under the canonical
-        # module name in sys.modules, AND patch __module__ on the class.  Pickle then
-        # finds the class at 'train_alien_format_classifier.AlienFormatDetector' and
-        # verifies it successfully.
+        # When run directly, __name__ == '__main__' and pickle would record
+        # the class there instead of under this module - fine here, but
+        # emperor_agent's __main__ is itself, so loading fails with
+        # AttributeError. Register this module under its real name and
+        # patch __module__ before dumping so pickle finds it correctly
+        # either way.
         import sys as _sys
         main_mod = _sys.modules.get("__main__")
         already_registered = "train_alien_format_classifier" in _sys.modules
@@ -861,21 +778,17 @@ class AlienFormatDetector:
         return joblib.load(path)
 
 
-# ════════════════════════════════════════════════════════════════════════
-# TRAIN / EVAL
-# ════════════════════════════════════════════════════════════════════════
-
 def train(n_per_class: int, extra_path: str | None, mine: bool = False):
     texts, labels = build_synthetic_dataset(n_per_class)
 
-    # ── Auto-mine real examples from chat_histories/ (opt-in, --mine) ──────────
+    # Auto-mine real examples from chat_histories/ (opt-in, --mine)
     if mine:
         real_texts, real_labels = mine_from_chat_histories()
         if real_texts:
             texts  += real_texts  * REAL_EXAMPLE_OVERSAMPLE
             labels += real_labels * REAL_EXAMPLE_OVERSAMPLE
 
-    # ── Optional extra JSONL supplied via --extra ──────────────────────────────
+    # Optional extra JSONL supplied via --extra
     if extra_path:
         ex_texts, ex_labels = load_real_examples(Path(extra_path))
         print(f"  Loaded {len(ex_texts)} example(s) from {extra_path}, "

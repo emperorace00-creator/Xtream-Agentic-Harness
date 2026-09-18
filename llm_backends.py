@@ -27,9 +27,9 @@ class LLMBackendsMixin:
     All `self.*` attributes referenced here are set in EmperorAgent.__init__.
     """
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # DISPATCHER
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def _make_request(self, messages, temp) -> dict:
         """Sanitize messages and dispatch to the active backend."""
@@ -59,9 +59,9 @@ class LLMBackendsMixin:
         clean = [{k: v for k, v in m.items() if k not in _STRIP_GOOGLE} for m in messages]
         return self._make_request_google(clean, temp)
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # GOOGLE GEMINI
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     @staticmethod
     def _convert_messages_to_gemini(messages: list) -> tuple:
@@ -136,7 +136,7 @@ class LLMBackendsMixin:
             else:
                 parts = [types.Part.from_text(text=str(content))]
 
-            # ── Google thought_signature injection ────────────────────────────
+            # Google thought_signature injection
             # For assistant messages produced mid-turn by the Google backend,
             # prepend a thought Part carrying the encrypted signature so Google
             # can restore its reasoning state when it processes the tool result.
@@ -247,9 +247,9 @@ class LLMBackendsMixin:
         return {"error": "Max retries exceeded"}
 
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # CLOUDFLARE
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def _make_request_cloudflare(self, messages, temp) -> dict:
         # Bug 7: defense in depth - switch_backend() already refuses to activate
@@ -331,9 +331,9 @@ class LLMBackendsMixin:
 
         return {"error": "Max retries exceeded"}
 
-    # ════════════════════════════════════════════════════════════════════════════
+    # ----
     # TOKEN ROUTER  (OpenAI-compatible)
-    # ════════════════════════════════════════════════════════════════════════════
+    # ----
 
     def _make_request_tokenrouter(self, messages, temp) -> dict:
         """
@@ -384,7 +384,7 @@ class LLMBackendsMixin:
                 if use_stream:
                     return self._parse_nim_streaming_response(response)
 
-                # ── Non-streaming ─────────────────────────────────────────────────────────────────────
+                # Non-streaming
                 data    = response.json()
                 message = data["choices"][0]["message"]
 
@@ -412,9 +412,9 @@ class LLMBackendsMixin:
 
         return {"error": "Max retries exceeded"}
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # LOCAL  (llama-server, OpenAI-compatible)
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     def _make_request_local(self, messages, temp) -> dict:
         """
@@ -511,9 +511,9 @@ class LLMBackendsMixin:
         except Exception:
             pass  # best-effort warm-up only - never surface this to the user
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
     # NVIDIA NIM  (OpenAI-compatible)
-    # ══════════════════════════════════════════════════════════════════════════
+    # ----
 
     @staticmethod
     def _convert_to_native_tools(messages: list) -> list:
@@ -604,7 +604,7 @@ class LLMBackendsMixin:
         while i < len(messages):
             msg = messages[i]
 
-            # ── Detect a tool-result user message ─────────────────────────────
+            # Detect a tool-result user message
             is_tool_result_msg = (
                 msg.get("role") == "user"
                 and isinstance(msg.get("content"), str)
@@ -620,7 +620,7 @@ class LLMBackendsMixin:
                 i += 1
                 continue
 
-            # ── Parse [SYSTEM - X result:] blocks from the user message ───────
+            # Parse [SYSTEM - X result:] blocks from the user message
             content = msg["content"]
             result_blocks = _RESULT_BLOCK_RE.findall(content)
 
@@ -630,7 +630,7 @@ class LLMBackendsMixin:
                 i += 1
                 continue
 
-            # ── Back-patch the preceding assistant message with tool_calls[] ──
+            # Back-patch the preceding assistant message with tool_calls[]
             # Find the most recent assistant message in what we've already built.
             asst_idx = None
             for j in range(len(result) - 1, -1, -1):
@@ -687,7 +687,7 @@ class LLMBackendsMixin:
                 patched_asst["tool_calls"] = tool_calls
                 result[asst_idx] = patched_asst
 
-            # ── Emit one tool message per result block ─────────────────────────
+            # Emit one tool message per result block
             for k, (label, result_content) in enumerate(result_blocks):
                 result.append({
                     "role":         "tool",
@@ -769,7 +769,7 @@ class LLMBackendsMixin:
                 if use_stream:
                     return self._parse_nim_streaming_response(response)
 
-                # ── Non-streaming ───────────────────────────────────────────
+                # Non-streaming
                 data    = response.json()
                 message = data["choices"][0]["message"]
 

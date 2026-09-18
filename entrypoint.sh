@@ -1,5 +1,5 @@
 #!/bin/bash
-# entrypoint.sh — Emperor sandbox container entrypoint
+# entrypoint.sh - Emperor sandbox container entrypoint
 #
 # Creates the workspace directory skeleton on first boot, then sleeps
 # forever so the container stays alive for `docker exec` commands.
@@ -16,5 +16,5 @@ mkdir -p /outputs
 
 echo "Emperor sandbox ready."
 
-# Keep container alive — start.py sends commands via `docker exec`
+# Keep container alive - start.py sends commands via `docker exec`
 exec sleep infinity

@@ -21,9 +21,9 @@ CACHE_TTL  = 24 * 60 * 60 * 30   # 30 days
 # cache if the process dies without a clean exit (kill -9, crash, etc).
 CACHE_AUTOSAVE_INTERVAL = 300  # seconds
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # CONTENT EXTRACTION
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 class ContentExtractor:
     """Advanced content extraction with multiple strategies."""
@@ -275,9 +275,9 @@ class DocumentationExtractor(ContentExtractor):
         return final
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 # WEB AGENT
-# ══════════════════════════════════════════════════════════════════════════════
+# ----
 
 class WebAgent:
     """
@@ -310,7 +310,7 @@ class WebAgent:
             console.print(f"🚨 [bold red]Web Agent init failed: {e}[/bold red]")
             raise
 
-    # ── Reranking ──────────────────────────────────────────────────────────────
+    # Reranking
 
     def _rerank_snippets(self, query: str, snippets: list) -> list:
         """
@@ -320,7 +320,7 @@ class WebAgent:
         order = rerank_passages(query, snippets, api_key=self._nvidia_key, label="snippets")
         return [snippets[i] for i in order]
 
-    # ── Cache ──────────────────────────────────────────────────────────────────
+    # Cache
 
     def _load_cache(self) -> dict:
         data = load_json(CACHE_FILE, default={})
@@ -370,7 +370,7 @@ class WebAgent:
             return False
         return (time.time() - ts) < CACHE_TTL
 
-    # ── Content cleaning ───────────────────────────────────────────────────────
+    # Content cleaning
 
     def _clean_content(self, text: str) -> str:
         """Strip navigation noise and normalise whitespace."""
@@ -392,7 +392,7 @@ class WebAgent:
         except Exception:
             return text
 
-    # ── Public API ─────────────────────────────────────────────────────────────
+    # Public API
 
     def search(self, query: str, from_date: str = None) -> str:
         """
