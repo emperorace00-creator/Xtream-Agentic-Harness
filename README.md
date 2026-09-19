@@ -1,14 +1,12 @@
-# Xtream - Sandboxed AI Assistant
+# Xtream : Sandboxed AI Assistant
 
 Xtream is an agentic coding and research assistant that talks to multiple LLM
-backends - NVIDIA NIM, Google Gemini, or
+backends - Nvidia NIM, Google Gemini, or
 your own local llama.cpp server - through a plain XML tool-calling protocol,
-so tool use works with any text-generating model, not just ones with native
-function-calling support. Code execution runs inside an isolated Docker
-sandbox. PDFs and plaintext files are ingested through a RAG pipeline
+so tool use works with any model. Code execution runs inside an isolated Docker
+sandbox. PDFs and plain text files are ingested through a retrieval pipeline
 (chunking → embeddings → cosine similarity → reranking). Every turn is
-zip-archived, so you can undo, rerun, or resume mid-task after an interrupt,
-up to the last 20 turns, via `/restore N`.
+zip-archived, so you can undo, rerun, or resume mid-task after an interrupt, via `/restore N`.
 
 ## TL;DR
 
@@ -18,15 +16,14 @@ up to the last 20 turns, via `/restore N`.
   words never appear
 - **Auto tool-format correction** - a local logistic-regression classifier
   catches it when a model hallucinates the wrong tool-call format and
-  nudges it to retry, instead of dropping the turn
-- **Academic & web search** - Linkup for live web results; Semantic Scholar
-  for papers, with AI-generated TL;DRs and Open Access PDF links
+  nudges it to retry
+- **Academic & web search** - Linkup for web results; Semantic Scholar
+  for papers, with generated TL;DRs and Open Access PDF links
 - **Cross-session history** - every conversation is appended to a global,
   embeddings-searchable archive via `<search_history>`, independent of any
   single chat session
 - **Image OCR & vision tiling** - dense scans/screenshots are automatically
   tiled so the model can read fine detail it would otherwise miss
-
 ---
 
 ## Architecture
@@ -137,7 +134,7 @@ graph TD
 - **Terminal UI** - Syntax-highlighted code blocks and Rich Markdown rendering via the
   Rich library.
 - **Image Preview & `<show_image>`** - Renders images inline in the terminal via `chafa`. The `<show_image>` tool allows the model to display generated plots, diagrams, or images directly in the console.
-- **Auto Image Enhancement & Preprocessing** - Automatically enhances image quality (contrast, orientation, brightness) on a copy before sending to OCR or vision models, without modifying the original file.
+- **Auto Image Enhancement & Preprocessing** - Automatically enhances image quality (contrast, orientation, brightness) on a copy before sending to OCR or vision models.
 
 ## Setup
 
@@ -328,7 +325,7 @@ When `/tool` is active, the model can invoke tools using XML tags:
 ### Local Backend
 
 Run any model on your own machine via [llama.cpp](https://github.com/ggml-org/llama.cpp)'s
-`llama-server` and connect to it with `/local`. Emperor is purely a client here - it
+`llama-server` and connect to it with `/local`. Xtream is purely a client here - it
 never launches or manages the server process. You start `llama-server.exe` yourself in
 its own terminal, with whatever model, quant, and flags you want, and `/local` just
 points at whatever's listening on the configured port. This keeps the workflow flexible
@@ -356,15 +353,15 @@ fires a background request that pushes the current system prompt into llama-serv
 cache ahead of time, so your first real message only has to prefill the new content, not
 the whole system prompt from scratch. This is a one-time-per-shape optimization - llama-server
 keeps the growing conversation cached between turns on its own afterward (visible as
-`graphs reused` in the server log), nothing further needed from Emperor's side.
+`graphs reused` in the server log), nothing further needed from Xtream's side.
 
 **Reasoning / thinking control:** on models with a Gemma-4-style thinking mode, this is
-controlled entirely by the flag you launch `llama-server` with, not from inside Emperor:
+controlled entirely by the flag you launch `llama-server` with, not from inside Xtream:
 - Thinking **on** (default for most reasoning-capable models) - no flag needed.
 - Thinking **off** - add `--reasoning off` to your launch command.
 
 To switch modes, close the running `llama-server.exe` and relaunch with the flag added or
-removed, then run `/local` again in Emperor to reconnect and re-warm the cache.
+removed, then run `/local` again in Xtream to reconnect and re-warm the cache.
 
 ## Project Structure
 

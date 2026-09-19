@@ -183,7 +183,7 @@ def extract_thinking_tags(text: str) -> tuple:
         return None, str(text or "")
 
     tag_pattern = re.compile(r"<(think|reasoning)>(.*?)</\1>", re.DOTALL | re.IGNORECASE)
-    # Bug #27 fix: use findall (all matches) instead of search (first only).
+    # Bug fix: use findall (all matches) instead of search (first only).
     # If a model emits two <think>...</think> blocks, search() captured only the
     # first while sub() stripped BOTH - the second block was deleted silently.
     # findall returns a list of (tag_name, content) tuples.
@@ -473,10 +473,10 @@ def rerank_passages(query: str, passages: list, api_key: str = None, label: str 
         console.print(f"[dim]Reranking {len(passages)} {label}...[/dim]")
 
         # Truncate passages to the reranker's token limit before submission.
-        # The NVIDIA reranker silently truncates passages beyond 512 tokens,
+        # The NVIDIA reranker silently truncates passages beyond max token limit,
         # which degrades ranking quality non-obviously. Pre-truncating here
         # gives the model consistent, predictable inputs.
-        _max_chars = getattr(config, "RERANKER_MAX_PASSAGE_CHARS", 1800)
+        _max_chars = getattr(config, "RERANKER_MAX_PASSAGE_CHARS", 8000)
         safe_passages = [p[:_max_chars] for p in passages]
 
         resp = requests.post(
@@ -631,7 +631,7 @@ def _embed(texts: list, input_type: str = "passage") -> list:
         "model":      config.EMBED_MODEL,
         "input":      texts,
         "input_type": input_type,
-        "truncate":   "END",       # silently truncate beyond 512 tokens
+        "truncate":   "END",       # silently truncate beyond max token limit
     }
 
     for attempt in range(3):
@@ -808,6 +808,22 @@ def _embed_code_range(texts: list, start: int, end: int, out: list) -> None:
         embeddings = _embed_code(batch)
         out[start:end] = embeddings
     except Exception as e:
+        err_str = str(e)
+        _is_client_err = (
+            "API error 400" in err_str or
+            "API error 401" in err_str or
+            "API error 403" in err_str or
+            "API error 422" in err_str or
+            "is not configured" in err_str
+        )
+        if _is_client_err:
+            console.print(
+                f"   [red]Code embed client error — skipping entire batch of "
+                f"{end - start} chunks: {err_str[:80]}[/red]"
+            )
+            for i in range(start, end):
+                out[i] = None
+            return
         if end - start <= 1:
             console.print(f"   [red]Code embed failed for 1 chunk: {e}[/red]")
             out[start] = None

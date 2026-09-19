@@ -45,6 +45,7 @@ from utils import (
     _embed_code,
     _embed_code_batched,
     _cosine_similarity,
+    _estimate_code_tokens,
 )
 
 # Graceful tree-sitter import
@@ -329,6 +330,18 @@ def _split_oversized_chunk(chunk: CodeChunk) -> list:
     """A single AST node (e.g. a huge class) exceeded CODE_CHUNK_MAX_LINES -
     split it into fixed windows so no one chunk dominates the embedding
     budget or the search results."""
+    # Extract docstring from parent chunk's embed_text header.
+    # Format is: "# File: X | kind: name\n# <docstring>\n\n<code>"
+    # Only inspect lines BEFORE the first blank line (i.e. the header block)
+    # to avoid falsely matching a code comment as the docstring.
+    _parent_doc = ""
+    for _line in chunk.embed_text.splitlines()[1:3]:   # skip line 0 (File: header)
+        if not _line.strip():                           # blank = end of header
+            break
+        if _line.startswith("# ") and not _line.startswith("# File:"):
+            _parent_doc = _line[2:].strip()
+            break
+
     lines     = chunk.text.split("\n")
     max_lines = config.CODE_CHUNK_MAX_LINES
     parts: list = []
@@ -341,7 +354,7 @@ def _split_oversized_chunk(chunk: CodeChunk) -> list:
         name       = f"{chunk.name} (part {part_num})"
         parts.append(CodeChunk(
             text=sub_text,
-            embed_text=_build_embed_text(chunk.file, chunk.kind, name, "", sub_text,
+            embed_text=_build_embed_text(chunk.file, chunk.kind, name, _parent_doc, sub_text,
                                          parent=chunk.parent),
             file=chunk.file, name=name, kind=chunk.kind,
             start_line=start_line, end_line=end_line,
@@ -388,7 +401,7 @@ def chunk_code_file(filepath: str, rel_path: str) -> list:
     final_chunks: list = []
     for c in raw_chunks:
         n_lines = c.end_line - c.start_line + 1
-        # Bug 38 fix: skip min-line filter for AST-derived chunks.
+        # Bug fix: skip min-line filter for AST-derived chunks.
         if not used_treesitter and n_lines < config.CODE_CHUNK_MIN_LINES:
             continue
         if n_lines <= config.CODE_CHUNK_MAX_LINES:
@@ -407,7 +420,32 @@ def chunk_code_file(filepath: str, rel_path: str) -> list:
             else:
                 final_chunks.extend(_split_oversized_chunk(c))
 
-    return final_chunks
+    result: list = []
+    max_tokens = config.CODE_EMBED_MAX_CHUNK_TOKENS
+    window_lines = config.CODE_CHUNK_MAX_LINES   # 120 — already the per-chunk line cap
+
+    for c in final_chunks:
+        if _estimate_code_tokens(c.embed_text) <= max_tokens:
+            result.append(c)
+        else:
+            # Chunk is too large for the embed model even after normal chunking
+            # (e.g. one giant flat markdown file). Sub-split by line windows.
+            sub_lines = c.text.split("\n")
+            i, part = 0, 1
+            while i < len(sub_lines):
+                sub_text = "\n".join(sub_lines[i:i + window_lines])
+                sub_name = f"{c.name} (part {part})"
+                result.append(CodeChunk(
+                    text=sub_text,
+                    embed_text=_build_embed_text(c.file, c.kind, sub_name, "", sub_text,
+                                                  parent=c.parent),
+                    file=c.file, name=sub_name, kind=c.kind,
+                    start_line=c.start_line + i, end_line=c.start_line + i + len(sub_lines[i:i+window_lines]) - 1,
+                    language=c.language, parent=c.parent,
+                ))
+                i += window_lines
+                part += 1
+    return result
 
 
 # ----
@@ -422,21 +460,21 @@ def _should_index(filepath: str) -> bool:
         return False
     if basename.endswith(".key"):
         return False
-    # Bug 3: doc_search artifacts (.chunks.json, .embed.json) are JSON files
+    # Bug fix: doc_search artifacts (.chunks.json, .embed.json) are JSON files
     # that contain large embedding arrays - they'd get indexed as "code",
     # polluting search results with doc_search internals and wasting token budget.
     if basename.endswith(".chunks.json") or basename.endswith(".embed.json"):
         return False
     parts = filepath.replace("\\", "/").split("/")
-    if any(d in config.CODE_INDEX_EXCLUDE_DIRS for d in parts):
+    if any(any(fnmatch.fnmatch(d, pat) for pat in config.CODE_INDEX_EXCLUDE_DIRS) for d in parts):
         return False
     ext = os.path.splitext(basename)[1].lower()
     if ext not in config.CODE_INDEX_EXTENSIONS:
         return False
-    # Bug #35 fix: skip .txt files that have a doc_search .chunks.json sidecar
+    # Bug fix: skip .txt files that have a doc_search .chunks.json sidecar
     # (i.e. they're OCR'd PDF transcripts already indexed by Nemotron via
     # doc_search). Re-indexing them via Codestral Embed wastes paid tokens and
-    # creates duplicate results. The shared helper is also used by Bug #33.
+    # creates duplicate results. The shared helper is also used by Bug fix:.
     if ext == ".txt":
         if os.path.exists(os.path.splitext(filepath)[0] + ".chunks.json"):
             return False
@@ -454,7 +492,10 @@ def _iter_source_files(search_dirs: list) -> list:
         if not os.path.isdir(base):
             continue
         for root, dirs, files in os.walk(base):
-            dirs[:] = [d for d in dirs if d not in config.CODE_INDEX_EXCLUDE_DIRS]
+            dirs[:] = [
+                d for d in dirs
+                if not any(fnmatch.fnmatch(d, pat) for pat in config.CODE_INDEX_EXCLUDE_DIRS)
+            ]
             for fn in files:
                 abs_path = os.path.join(root, fn)
                 if not _should_index(abs_path):
@@ -462,7 +503,7 @@ def _iter_source_files(search_dirs: list) -> list:
                 container_path = config.host_to_container_path(abs_path)
                 if container_path in seen:
                     continue
-                # Bug #34 fix: dedup by content hash so duplicate files across
+                # Bug fix: dedup by content hash so duplicate files across
                 # uploads/ and scratch/ don't waste tokens.
                 try:
                     file_hash = _hash_file(abs_path)
@@ -571,7 +612,7 @@ class CodeSearchAgent:
         if self._index is None:
             loaded = self._load_index()
             # _load_index() returns None when stored model/dimension differs from
-            # config (Bug 2) - treat that the same as force=True: start fresh so
+            # config (Bug fix:) - treat that the same as force=True: start fresh so
             # we never mix old vectors of the wrong shape with new ones.
             self._index = loaded if loaded is not None else {
                 "version":         1,
@@ -795,7 +836,7 @@ class CodeSearchAgent:
             try:
                 with open(self.index_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                # Bug 2: detect model/dimension mismatch before loading old vectors.
+                # Bug fix: detect model/dimension mismatch before loading old vectors.
                 stored_model = data.get("embed_model", "")
                 stored_dim   = data.get("embed_dimension", -1)
                 if stored_model != config.CODE_EMBED_MODEL or stored_dim != config.CODE_EMBED_DIMENSION:

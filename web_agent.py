@@ -55,7 +55,7 @@ class ContentExtractor:
                 if re.match(r'^#{1,6}\s+', part):
                     current_header = part.strip()
                 elif part.strip():
-                    # Bug 31 fix: treat pre-header text as its own section
+                    # Bug fix: treat pre-header text as its own section
                     header = current_header or "Introduction"
                     sections.append({
                         'type': 'section',
@@ -324,7 +324,7 @@ class WebAgent:
 
     def _load_cache(self) -> dict:
         data = load_json(CACHE_FILE, default={})
-        # Bug 9: if the JSON file is corrupted and doesn't deserialize to a
+        # Bug fix: if the JSON file is corrupted and doesn't deserialize to a
         # dict, silently discard it so every subsequent cache lookup is a miss
         # rather than an AttributeError/TypeError crash.
         return data if isinstance(data, dict) else {}
@@ -361,7 +361,7 @@ class WebAgent:
 
     def _is_cache_valid(self, key: str) -> bool:
         entry = self.cache.get(key)
-        # Bug 9: guard against corrupted/non-dict cache entries that would
+        # Bug fix: guard against corrupted/non-dict cache entries that would
         # raise TypeError/KeyError when accessing entry["timestamp"].
         if not isinstance(entry, dict):
             return False
@@ -466,7 +466,7 @@ class WebAgent:
         if len(final) > 21000:
             final = final[:21000] + "\n\n[SYSTEM: TRUNCATED — result exceeded 21,000 chars]"
 
-        # Bug #32 fix: don't cache empty results - a 30-day TTL on an empty
+        # Bug fix: don't cache empty results - a 30-day TTL on an empty
         # string would lock in zero results for a month for the same query.
         if final:
             self.cache[cache_key] = {"timestamp": time.time(), "content": final}
@@ -476,7 +476,7 @@ class WebAgent:
 
     def read_url(self, url: str, query_context: str = None, max_tokens: int = 6000) -> str:
         """Read a URL and intelligently extract the most relevant content."""
-        # Bug 8: guard against missing API key - avoids sending "Bearer None"
+        # Bug fix: guard against missing API key - avoids sending "Bearer None"
         # which causes an HTTP 401 crash instead of a graceful error message.
         if not self.api_key:
             return ("[SYSTEM: url_search unavailable — Linkup API key not configured. "
@@ -518,7 +518,7 @@ class WebAgent:
 
         final = f"[SOURCE: {url}]\n\n{final}"
 
-        # Bug #32 fix: same guard for URL cache - don't cache empty page extractions.
+        # Bug fix: same guard for URL cache - don't cache empty page extractions.
         if final:
             self.cache[cache_key] = {"timestamp": time.time(), "content": final}
             self._mark_cache_dirty()

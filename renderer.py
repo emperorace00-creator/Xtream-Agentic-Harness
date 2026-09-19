@@ -323,7 +323,7 @@ def _build_master_enhanced(item_path: str, filename: str) -> str:
             8: _PILImg.ROTATE_90,
         }
         if _orient in _ORIENT_MAP:
-            # Bug 29: call .load() to force Pillow to fully read pixel data into
+            # Bug fix: call .load() to force Pillow to fully read pixel data into
             # memory and release the OS file handle before we overwrite the same
             # path.  Without this, Image.open() holds the file open lazily and
             # save() fails with PermissionError on Windows.
@@ -679,7 +679,7 @@ def process_images_via_ocr(image_input: str, ocr_agent) -> str:
     ocr_agent: an ImageOCRAgent instance passed by the caller (start.py).
     The original file is never modified - only enhanced copies are used.
     """
-    # Bug #14 fix: track all temp image files created by enhancement/tiling
+    # Bug fix: track all temp image files created by enhancement/tiling
     # and delete them when the OCR pass finishes, preventing scratch directory leak.
     _temp_files = []
     
@@ -827,7 +827,7 @@ def prep_for_console(text: str) -> str:
                       '\\sqrt', '\\alpha', '\\beta', '\\theta', '\\pi',
                       '\\rightarrow', '\\leftarrow', '\\Rightarrow',
                       '\\[', '\\(', '~')
-    # Bug 12: also catch bare numeric subscripts like v_1 or T_2 that have no
+    # Bug fix: also catch bare numeric subscripts like v_1 or T_2 that have no
     # LaTeX markers or $-delimiters, so the fast-path doesn't skip them.
     _has_bare_subscript = bool(re.search(r'[A-Za-z]_\d', text))
     if not any(t in text for t in _math_triggers) and not _has_bare_subscript:
@@ -1281,7 +1281,7 @@ def prep_for_console(text: str) -> str:
     # Must run BEFORE _bare so \mu doesn't eat the 'lticolumn' prefix.
     text = re.sub(r'\\multicolumn\{[^{}]*\}\{[^{}]*\}\{([^{}]*)\}', r'\1', text)
 
-    # Bug #43 fix: sort by descending key length so longer (more-specific)
+    # Bug fix: sort by descending key length so longer (more-specific)
     # macros like \infty always replace before their shorter prefixes like
     # \inf, and \notin replaces before \in.  Dict insertion order is
     # maintained in Python 3.7+ but doesn't guarantee longest-first.

@@ -192,13 +192,13 @@ class DocSearchAgent:
         if not text.strip():
             return {"success": False, "error": "File is empty — nothing to embed."}
 
-        # Bug #21 fix: if the 'text' is actually an OCR error string rather
+        # Bug fix: if the 'text' is actually an OCR error string rather
         # than real document content, don't embed it - the error would become
         # a searchable chunk that matches future doc_search queries falsely.
         if text.strip().startswith("[OCR ERROR"):
             return {"success": False, "error": f"OCR failed for this document — not embedded: {text[:120]}"}
 
-        # Bug #21 fix: if the 'text' is actually an OCR error string rather
+        # Bug fix: if the 'text' is actually an OCR error string rather
         # than real document content, don't embed it - the error would become
         # a searchable chunk that matches future doc_search queries falsely.
         if text.strip().startswith("[OCR ERROR"):
@@ -232,7 +232,7 @@ class DocSearchAgent:
                 "embedding":  emb,
             })
 
-        # Bug #20 fix: if any chunk failed to embed, abort - don't write
+        # Bug fix: if any chunk failed to embed, abort - don't write
         # source_hash to the sidecar. A partial index would block future re-ingest
         # attempts (the hash-match skip guard says "already indexed") while silently
         # returning fewer results than the document actually has.
@@ -335,7 +335,7 @@ class DocSearchAgent:
         # Rank
         ranked_indices = np.argsort(scores)[::-1]
 
-        # Bug 33: apply minimum similarity threshold to avoid flooding the
+        # Bug fix: apply minimum similarity threshold to avoid flooding the
         # model's context with irrelevant passages on low-relevance queries.
         _MIN_SCORE = getattr(config, "DOC_SEARCH_MIN_SCORE", 0.15)
         ranked_indices = [
@@ -389,7 +389,7 @@ class DocSearchAgent:
                 if fn.endswith(CHUNKS_SUFFIX):
                     chunks_path = os.path.join(root, fn)
 
-                    # Bug 1: don't guess the source extension as ".txt" - that
+                    # Bug fix: don't guess the source extension as ".txt" - that
                     # breaks for .md files ingested via ingest_text (they keep
                     # their original extension, e.g. "notes.md"), causing this
                     # cleanup to delete valid, still-referenced chunks files.
@@ -468,7 +468,11 @@ class PDFIngestAgent:
             dict with success, txt_path, pages, output_file, or error.
         """
         pdf_path = os.path.abspath(pdf_path)
-        stem     = Path(pdf_path).stem          # e.g. "chapter3"
+        _uploads_rel = os.path.relpath(pdf_path, config.UPLOADS_FOLDER)
+        if os.path.isabs(_uploads_rel) or _uploads_rel.startswith(".."):
+            stem = Path(pdf_path).stem
+        else:
+            stem = os.path.splitext(_uploads_rel.replace(os.sep, "_").replace("/", "_"))[0]
         out_name = f"{stem}.txt"
         out_path = os.path.join(self.scratch, out_name)
 
@@ -491,7 +495,7 @@ class PDFIngestAgent:
             try:
                 with open(chunks_path, "r", encoding="utf-8") as _f:
                     existing = json.load(_f)
-                # Bug 6: previously this only checked chunks_path and returned
+                # Bug fix: previously this only checked chunks_path and returned
                 # skipped=True unconditionally, even if out_path (the .txt) had
                 # been deleted separately. That left the model calling
                 # view_lines on a nonexistent file, permanently stuck, since
@@ -554,12 +558,12 @@ class PDFIngestAgent:
         render_errs = []
 
         import threading as _threading
-        cancel_event = _threading.Event()  # Bug 21: used to signal producer to stop
+        cancel_event = _threading.Event()  # Bug fix: used to signal producer to stop
 
         def _render_pages():
             try:
                 for i, page in enumerate(doc):
-                    if cancel_event.is_set():  # Bug 21: bail early if consumer failed
+                    if cancel_event.is_set():  # Bug fix: bail early if consumer failed
                         break
                     # 200 DPI: ~78% more pixels than 150 DPI - better for dense
                     # math, small subscripts, and tables.
@@ -567,7 +571,7 @@ class PDFIngestAgent:
                     pix  = page.get_pixmap(matrix=mat)
                     path = os.path.join(tmp_dir, f"page_{i + 1:04d}.png")
                     pix.save(path)
-                    # Bug 21: use timeout put so the producer never blocks
+                    # Bug fix: use timeout put so the producer never blocks
                     # forever if the consumer has already exited.
                     while True:
                         try:
@@ -580,7 +584,7 @@ class PDFIngestAgent:
                 render_errs.append(e)
             finally:
                 doc.close()
-                # Bug 7 fix: thread deadlock on sentinel put
+                # Bug fix: thread deadlock on sentinel put
                 while True:
                     try:
                         render_q.put(None, timeout=1.0)
@@ -604,7 +608,7 @@ class PDFIngestAgent:
             # MAX_CONCURRENCY. Spawning one thread per page wastes OS resources
             # on large PDFs without any throughput benefit.
             _max_workers = min(total_pages or 1, config.PDF_OCR_MAX_WORKERS)
-            # Bug 10 fix: bounding inflight tasks to prevent unbounded queue from 
+            # Bug fix: bounding inflight tasks to prevent unbounded queue from 
             # rendering all pages instantly, defeating RENDER_LOOKAHEAD limits.
             inflight_sem = _threading.Semaphore(_max_workers + 2)
             with _cf.ThreadPoolExecutor(max_workers=_max_workers) as ocr_pool:
@@ -648,7 +652,7 @@ class PDFIngestAgent:
 
 
         except Exception as e:
-            # Bug 21: signal producer to stop and drain queue so it unblocks
+            # Bug fix: signal producer to stop and drain queue so it unblocks
             cancel_event.set()
             render_thread.join(timeout=5)
             self._cleanup(tmp_dir, stem=stem, extra_files=written_image_files)
@@ -661,7 +665,7 @@ class PDFIngestAgent:
             return {"success": False, "error": f"Page rendering failed: {render_errs[0]}"}
 
         # Step 4: assemble and save
-        written_files = []  # Bug 32: track files written so we can clean up partials on failure
+        written_files = []  # Bug fix: track files written so we can clean up partials on failure
         try:
             parts = []
             for page_num, r in enumerate(ordered_results, 1):
@@ -672,7 +676,7 @@ class PDFIngestAgent:
                     parts.append(f"--- Page {page_num} ---\n{markdown}")
             full_text = "\n\n".join(parts)
 
-            # Bug 4: on total OCR failure (every page returned None or blank),
+            # Bug fix: on total OCR failure (every page returned None or blank),
             # full_text is "". Previously this still wrote an empty .txt,
             # let chunk_and_embed fail silently (warning only), and returned
             # success=True regardless - reporting the PDF as ingested when
@@ -692,13 +696,13 @@ class PDFIngestAgent:
             os.makedirs(self.scratch, exist_ok=True)
             with open(out_path, "w", encoding="utf-8") as f:
                 f.write(full_text)
-            written_files.append(out_path)  # Bug 32: track
+            written_files.append(out_path)  # Bug fix: track
 
             console.print(f"   ✅ [green]Saved: {out_name} ({len(full_text):,} chars)[/green]")
 
         except Exception as e:
             self._cleanup(tmp_dir, stem=stem, extra_files=written_image_files)
-            # Bug 32: remove any partially-written output files
+            # Bug fix: remove any partially-written output files
             for _wf in written_files:
                 try:
                     if os.path.exists(_wf):
@@ -707,10 +711,10 @@ class PDFIngestAgent:
                     pass
             return {"success": False, "error": f"Failed to write output: {e}"}
 
-        self._cleanup(tmp_dir, stem=stem, extra_files=written_image_files)  # Bug 2 + Partial 1: also removes tile/overview/master images
+        self._cleanup(tmp_dir, stem=stem, extra_files=written_image_files)  # Bug fix: + Partial 1: also removes tile/overview/master images
 
         # Step 5: chunk + embed for semantic doc search
-        # Bug 32: also track chunks file for cleanup on failure
+        # Bug fix: also track chunks file for cleanup on failure
         embed_result = {"success": False, "chunks": 0}
         try:
             embed_result = self.doc_search.chunk_and_embed(out_path, source_hash=pdf_hash)
@@ -731,7 +735,7 @@ class PDFIngestAgent:
             "pages":       total_pages,
             "chars":       len(full_text),
             "chunks":      embed_result.get("chunks", 0),
-            # Bug 4 (second layer): text extraction succeeding is not the same
+            # Bug fix: (second layer): text extraction succeeding is not the same
             # as the file being searchable via doc_search - surface embedding
             # status separately instead of implying doc_search always works
             # whenever "success" is True.
@@ -842,7 +846,7 @@ class PDFIngestAgent:
                 except Exception:
                     pass
 
-        # Bug 2: secondary glob sweep - harmless, catches any stragglers left
+        # Bug fix: secondary glob sweep - harmless, catches any stragglers left
         # over from ingests that ran before the extra_files tracking existed.
         # Kept as a best-effort safety net, not the primary mechanism.
         if stem:

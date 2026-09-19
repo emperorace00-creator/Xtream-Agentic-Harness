@@ -231,7 +231,7 @@ def _save_partial_history(agent, prompt_payload):
     try:
         partial_summary = agent.summarizer.summarize_turn(agent._current_tool_call_log)
 
-        # Bug 14: this used to set agent.last_tool_summary, which
+        # Bug fix: this used to set agent.last_tool_summary, which
         # generate_with_history() injects into the NEXT turn's system prompt
         # under "[LAST TURN ACTIONS]" - implying those actions were
         # committed. But a cancelled turn's workspace changes are rolled
@@ -396,7 +396,7 @@ def _run_turn(prompt_payload: str, images=None, uploaded_filenames=None,
                             os.remove(config.WORKSPACE_REGISTRY_FILE)
 
                         emperor.workspace_tracker._load_registry()
-                        # Same primitive /restore uses (Bug 11): drop the in-memory
+                        # Same primitive /restore uses (Bug fix:): drop the in-memory
                         # BM25 index AND delete bm25_corpus.pkl. Clearing only
                         # memory leaves the pickle on disk; _ensure_index_loaded()
                         # below then reloads it whenever cache_mtime >=
@@ -418,7 +418,7 @@ def _run_turn(prompt_payload: str, images=None, uploaded_filenames=None,
                         if getattr(emperor, "code_search_agent", None):
                             emperor.code_search_agent.mark_stale()
 
-                        # Bug #37 fix: uploads cache may reference a PDF that was
+                        # Bug fix: uploads cache may reference a PDF that was
                         # ingested mid-turn and then reverted - clear it so the
                         # model doesn't see a stale "ALREADY INGESTED" status.
                         emperor._uploads_cache = None
@@ -635,7 +635,7 @@ def cmd_reset():
             item_path = os.path.join(config.SCRATCH_DIR, item)
             try:
                 if os.path.isfile(item_path):
-                    _force_remove(item_path)  # Bug 36: handles read-only files on Windows
+                    _force_remove(item_path)  # Bug fix: handles read-only files on Windows
                 elif os.path.isdir(item_path):
                     robust_rmtree(item_path)
             except Exception as e:
@@ -660,7 +660,7 @@ def cmd_reset():
 
     tsm.clear_all()
     emperor.last_tool_summary = ""
-    emperor.last_cancelled_summary = ""  # Bug 14 follow-up: full reset on /reset
+    emperor.last_cancelled_summary = ""  # Bug fix: full reset on /reset
     emperor._partial_messages = None
     emperor._current_tool_call_log = []
     emperor.save_history(skip_global=True)
@@ -911,7 +911,7 @@ def cmd_rerun(user_text: str):
 
     # Images: hard-stop if T{target} had images but they're not
     # reloadable, rather than silently proceeding text-only.
-    # Bug 16: use ledger images_snap field instead of substring prompt check
+    # Bug fix: use ledger images_snap field instead of substring prompt check
     # so a user prompt mentioning the marker string can't spoof this guard.
     _rerun_entry = next((e for e in tsm._ledger if e.get("turn") == target), None)
     had_images   = bool(_rerun_entry and _rerun_entry.get("images_snap"))
@@ -943,7 +943,7 @@ def cmd_rerun(user_text: str):
     if current > target:
         console.print(f"[{META}]  Turns T{target + 1}–T{current} will be kept in conversation memory.[/{META}]")
 
-    # Bug 17 fix: persist T{target} itself into the WAL alongside the tail,
+    # Bug fix: persist T{target} itself into the WAL alongside the tail,
     # so a crash mid-regeneration can restore the original turn instead of
     # leaving a gap.
     tail_history = emperor.chat_history[(target - 1) * 2:]
@@ -958,7 +958,7 @@ def cmd_rerun(user_text: str):
     console.print(f"[{META}]truncating history to T{target - 1}...[/{META}]")
     console.print(tsm.truncate_history_only(target - 1, emperor, keep_tail=True))
 
-    # Bug #18 fix: DON'T delete T{target}'s archive here - it must
+    # Bug fix: DON'T delete T{target}'s archive here - it must
     # survive until _run_turn completes successfully. Deletion is deferred
     # to the success branch so a cancelled/failed rerun leaves the
     # original turn's archive intact and /restore still works.
@@ -967,7 +967,7 @@ def cmd_rerun(user_text: str):
 
     console.print(f"[{META}]Rerunning T{target}...[/{META}]\n")
     emperor.last_tool_summary = ""  # clear stale tool context from old turn
-    # Bug 3 (was Bug 1): _run_turn() catches KeyboardInterrupt/cancellation
+    # Bug fix: (was Bug fix:): _run_turn() catches KeyboardInterrupt/cancellation
     # internally and returns None instead of raising - it does NOT throw an
     # exception on cancel. The old try/except/else here treated "no exception
     # raised" as success, so a cancelled rerun still hit the `else` branch and
@@ -998,7 +998,7 @@ def cmd_rerun(user_text: str):
         return
 
     # Success: the new T{target} is committed - now safe to delete the old archive.
-    # Bug #18 fix: deletion happens here (post-success), not before _run_turn.
+    # Bug fix: deletion happens here (post-success), not before _run_turn.
     tsm.delete_turn_archives(target)
 
     # Re-append tail after the newly generated T{target}.
@@ -1154,7 +1154,7 @@ def cmd_edit(user_text: str):
     # nothing gets resent and there's no image to preserve.
     edit_images = None
     if role == "user":
-        # Bug 16: use ledger images_snap instead of substring prompt check.
+        # Bug fix: use ledger images_snap instead of substring prompt check.
         _edit_entry = next((e for e in tsm._ledger if e.get("turn") == target), None)
         had_images  = bool(_edit_entry and _edit_entry.get("images_snap"))
         if had_images:
@@ -1172,7 +1172,7 @@ def cmd_edit(user_text: str):
             # has the marker baked in (it was the pre-filled editor text) -
             # strip it so _run_turn regenerates it correctly from the real images.
             new_content = re.sub(r'\n\[SYSTEM: Images attached.*?\]\s*$', '', new_content)
-            # Bug #19 fix: re-add the marker from the snapshot filenames so
+            # Bug fix: re-add the marker from the snapshot filenames so
             # the stored message still references the images that were attached.
             # Use U+2014 em-dash to match the regex in cmd_rerun's image marker.
             if edit_images:
@@ -1183,7 +1183,7 @@ def cmd_edit(user_text: str):
     emperor.chat_history[msg_idx]["content"] = new_content
     emperor.save_history(skip_global=True)
     emperor.last_tool_summary = ""
-    emperor.last_cancelled_summary = ""  # Bug 14 follow-up: stale after an edit too
+    emperor.last_cancelled_summary = ""  # Bug fix: stale after an edit too
 
     console.print(f"[{META}]✓ T{target} {role} message updated.[/{META}]")
     if role == "user":
@@ -1227,7 +1227,7 @@ def _dispatch_command(user_text: str):
         return _COMMANDS_EXACT[user_text]
     if user_text in _BACKEND_COMMANDS:
         return lambda: cmd_switch_backend(user_text)
-    # Bug 5: require a token boundary after the command word so natural
+    # Bug fix: require a token boundary after the command word so natural
     # prompts starting with the same letters ("/rerunner my query",
     # "/restore_backup") don't get silently swallowed by a command handler.
     for prefix, fn in _COMMANDS_PREFIX:

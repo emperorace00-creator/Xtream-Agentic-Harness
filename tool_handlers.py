@@ -37,7 +37,7 @@ UPLOAD_EXTENSIONS = CODE_EXTENSIONS | {
     ".env",
     ".pdf",
     ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif", ".tiff", ".tif",
-    # Bug #48 fix: .svg already in IMAGE_PREVIEW_EXTENSIONS but was missing here,
+    # Bug fix: .svg already in IMAGE_PREVIEW_EXTENSIONS but was missing here,
     # so uploaded SVGs never appeared in the [UPLOADS FOLDER] listing.
     ".svg",
     ".csv", ".xml", ".xlsx", ".xls", ".parquet",
@@ -46,6 +46,8 @@ UPLOAD_EXTENSIONS = CODE_EXTENSIONS | {
 
 
 
+_norm_real = lambda p: os.path.normcase(os.path.realpath(p))
+
 _ALLOWED_READ_PREFIXES = None  # lazy-init to avoid import-order issues
 
 def _is_allowed_read_path(filepath: str) -> bool:
@@ -53,13 +55,13 @@ def _is_allowed_read_path(filepath: str) -> bool:
     global _ALLOWED_READ_PREFIXES
     if _ALLOWED_READ_PREFIXES is None:
         _ALLOWED_READ_PREFIXES = [
-            _norm(config.SCRATCH_DIR),
-            _norm(config.UPLOADS_FOLDER),
-            _norm(config.OUTPUTS_DIR),
-            _norm(config.DATABASE_DIR),
-            _norm(config.CHAT_HISTORIES_DIR),
+            _norm_real(config.SCRATCH_DIR),
+            _norm_real(config.UPLOADS_FOLDER),
+            _norm_real(config.OUTPUTS_DIR),
+            _norm_real(config.DATABASE_DIR),
+            _norm_real(config.CHAT_HISTORIES_DIR),
         ]
-    normed = _norm(filepath)
+    normed = _norm_real(filepath)
     return any(normed == prefix or normed.startswith(prefix + os.sep) for prefix in _ALLOWED_READ_PREFIXES)
 
 
@@ -125,6 +127,8 @@ class ToolHandlersMixin:
     # TOOL DISPATCHER
     # ----
 
+    _WRITE_TOOLS = {"str_replace", "bash", "ingest_pdf", "ingest_text", "ingest_chat"}
+
     def _call_tool(self, fn: str, args: dict, web_agent) -> str:
         """
         Dispatch a tool call to the appropriate private handler method.
@@ -138,9 +142,21 @@ class ToolHandlersMixin:
         """
         if self._active_groups:
             self._start_scratch_backup()
+            # Block write tools until the pre-turn backup finishes.
+            # join() is safe to call multiple times (no-op after first).
+            if fn in self._WRITE_TOOLS and self._backup_thread is not None:
+                self._backup_thread.join()
         handler = self._dispatch.get(fn)
         if handler:
-            return handler(args, web_agent)
+            try:
+                return handler(args, web_agent)
+            except KeyboardInterrupt:
+                raise
+            except Exception as e:
+                import traceback
+                _err = traceback.format_exc()
+                console.print(f"\n[red]Tool error ({fn}): {e}[/red]")
+                return f"[SYSTEM: ERROR] The tool '{fn}' crashed during execution.\nError: {e}\n\nTraceback:\n{_err}\n\nPlease fix the input or use a different tool."
         return f"[SYSTEM: ERROR] Unknown tool: '{fn}'"
 
     # ----
@@ -184,7 +200,7 @@ class ToolHandlersMixin:
         if not filename:
             return "[SYSTEM: ERROR] ingest_chat requires a filename, e.g. <ingest_chat>gemini_chat.txt</ingest_chat>"
 
-        # Bug #1 fix: strip any directory component to prevent os.path.join path traversal.
+        # Bug fix: strip any directory component to prevent os.path.join path traversal.
         filename = os.path.basename(filename)
 
         ext = os.path.splitext(filename)[1].lower()
@@ -212,7 +228,7 @@ class ToolHandlersMixin:
         file_hash = hashlib.md5(raw_bytes).hexdigest()
 
         stem     = os.path.splitext(os.path.basename(filename))[0]
-        # Bug #22 fix: include the first 8 hex chars of the content hash
+        # Bug fix: include the first 8 hex chars of the content hash
         # so two different files with the same basename don't collide.
         out_name = f"{stem}_{file_hash[:8]}_imported.jsonl"
         out_path = os.path.join(config.GLOBAL_HISTORIES_DIR, out_name)
@@ -330,7 +346,7 @@ class ToolHandlersMixin:
         if not filename:
             return "[SYSTEM: ERROR] ingest_pdf requires a filename, e.g. <ingest_pdf>paper.pdf</ingest_pdf>"
 
-        # Bug #1 fix: strip any directory component to prevent os.path.join path traversal.
+        # Bug fix: strip any directory component to prevent os.path.join path traversal.
         filename = os.path.basename(filename)
 
         if not filename.lower().endswith('.pdf'):
@@ -345,7 +361,7 @@ class ToolHandlersMixin:
         pdf_path = os.path.join(config.UPLOADS_FOLDER, filename)
         if not os.path.exists(pdf_path):
             # Fuzzy search - match by basename anywhere under /uploads.
-            # Bug #1 fix: verify each candidate stays under UPLOADS_FOLDER
+            # Bug fix: verify each candidate stays under UPLOADS_FOLDER
             # via realpath to prevent symlink-based escapes.
             for root, _, files in os.walk(config.UPLOADS_FOLDER):
                 if filename in files:
@@ -394,7 +410,7 @@ class ToolHandlersMixin:
         if hasattr(self, 'code_search_agent') and self.code_search_agent:
             self.code_search_agent.mark_stale()
 
-        # Bug 4 (second layer): don't imply doc_search will work just because
+        # Bug fix: (second layer): don't imply doc_search will work just because
         # text extraction succeeded - surface it plainly when embedding failed
         # for a reason other than empty text (e.g. embedding API was down).
         if not res.get("embedded", True):
@@ -424,7 +440,7 @@ class ToolHandlersMixin:
         if not filename:
             return "[SYSTEM: ERROR] ingest_text requires a filename, e.g. <ingest_text>notes.txt</ingest_text>"
 
-        # Bug #1 fix: strip any directory component to prevent os.path.join path traversal.
+        # Bug fix: strip any directory component to prevent os.path.join path traversal.
         filename = os.path.basename(filename)
 
         ext = os.path.splitext(filename)[1].lower()
@@ -539,7 +555,7 @@ class ToolHandlersMixin:
             if isinstance(result, dict) and result.get("success"):
                 if hasattr(self, 'code_search_agent') and self.code_search_agent:
                     self.code_search_agent.mark_stale()
-                # Bug #30 fix: if the edited file has a doc_search .chunks.json
+                # Bug fix: if the edited file has a doc_search .chunks.json
                 # sidecar, delete it so doc_search doesn't return pre-edit passages.
                 # The model can re-run ingest_text/ingest_pdf to rebuild it.
                 _edited_abs = self.file_ops._resolve_path(filepath)
@@ -576,7 +592,7 @@ class ToolHandlersMixin:
                 "error": "show_image requires a filepath, e.g. <show_image>chart.png</show_image>"
             })
 
-        # Bug #3 fix: handle /uploads paths before _resolve_path, which only
+        # Bug fix: handle /uploads paths before _resolve_path, which only
         # allows scratch/outputs. show_image is read-only so /uploads is safe.
         _host_path   = config.container_to_host_path(filepath)
         _uploads_abs = os.path.realpath(config.UPLOADS_FOLDER)
@@ -615,7 +631,7 @@ class ToolHandlersMixin:
 
             os.makedirs(config.OUTPUTS_DIR, exist_ok=True)
             out_path = os.path.join(config.OUTPUTS_DIR, os.path.basename(full_path))
-            # Bug #4 fix: skip copy when src and dst are the same file
+            # Bug fix: skip copy when src and dst are the same file
             # (e.g. the image is already in /outputs) to avoid SameFileError.
             if not (os.path.exists(out_path) and os.path.samefile(full_path, out_path)):
                 shutil.copy2(full_path, out_path)
@@ -654,10 +670,10 @@ class ToolHandlersMixin:
         """
         host_path = config.container_to_host_path(filepath)
 
-        # Use normcase+normpath for reliable comparison on Windows (mixed slashes).
+        # Use normcase+realpath for reliable comparison on Windows (mixed slashes) and symlinks.
         is_external = os.path.isabs(host_path) and not (
-            _norm(host_path) == _norm(config.SCRATCH_DIR)
-            or _norm(host_path).startswith(_norm(config.SCRATCH_DIR) + os.sep)
+            _norm_real(host_path) == _norm_real(config.SCRATCH_DIR)
+            or _norm_real(host_path).startswith(_norm_real(config.SCRATCH_DIR) + os.sep)
         )
         if not is_external:
             return host_path, None, None
@@ -747,7 +763,7 @@ class ToolHandlersMixin:
                     hit = (re.search(pattern, line) if use_regex
                            else pattern.lower() in line.lower())
                 except re.error:
-                    # Bug #6 fix: invalid regex pattern - fall back to literal match
+                    # Bug fix: invalid regex pattern - fall back to literal match
                     hit = pattern in line
                 if hit:
                     s = max(0, i - ctx_lines)
@@ -948,7 +964,7 @@ class ToolHandlersMixin:
         # mv post-hook
         if mv_src and mv_dst and process.returncode == 0:
             try:
-                # Bug 17: if the source is a directory or a wildcard pattern, a
+                # Bug fix: if the source is a directory or a wildcard pattern, a
                 # single remove_file() leaves all sub-files as phantom registry
                 # entries.  reconcile_workspace() does a full diff and handles
                 # all cases correctly.
@@ -960,7 +976,7 @@ class ToolHandlersMixin:
                         if os.path.isdir(mv_dst) else mv_dst
                     )
                     
-                    # Bug 29 fix: rename matching .chunks.json sidecar to preserve semantic search index
+                    # Bug fix: rename matching .chunks.json sidecar to preserve semantic search index
                     sidecar_src = None
                     if mv_src.lower().endswith('.txt'):
                         sidecar_src = mv_src[:-4] + ".chunks.json"
@@ -1049,7 +1065,7 @@ class ToolHandlersMixin:
             return "[UPLOADS FOLDER EMPTY]"
 
         try:
-            # Bug 36 fix: aggregate signature to detect subdirectory additions/edits
+            # Bug fix: aggregate signature to detect subdirectory additions/edits
             def _uploads_signature(folder):
                 max_mtime = 0
                 count = 0

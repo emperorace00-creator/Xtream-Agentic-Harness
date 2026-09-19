@@ -147,7 +147,7 @@ class TurnStateManager:
                     and not any(d.endswith(s) for s in EXCL_SUFFIXES)
                     and d not in EXCL_DIRS
                 ]
-                # Bug #24 fix: preserve empty directories in the zip archive so
+                # Bug fix: preserve empty directories in the zip archive so
                 # restoring a turn recreates them rather than dropping them.
                 if root != scratch and not files and not dirs:
                     rel_dir = os.path.relpath(root, scratch).replace("\\", "/")
@@ -169,7 +169,7 @@ class TurnStateManager:
     def _scratch_size_mb(self) -> float:
         """Return total size of config.SCRATCH_DIR in megabytes.
 
-        Bug #12 fix: prune the same excluded dirs/prefixes/suffixes as
+        Bug fix: prune the same excluded dirs/prefixes/suffixes as
         _zip_scratch does, so node_modules / venv / .git don't inflate
         the reported size and permanently disable backups.
         """
@@ -533,7 +533,7 @@ class TurnStateManager:
                 new_e = dict(entry)
                 new_e["turn"] = t - 1
 
-                # Bug #25 fix: adjust rerun_of alongside the turn number so
+                # Bug fix: adjust rerun_of alongside the turn number so
                 # the /turns display stays consistent after a delete.
                 if "rerun_of" in new_e:
                     ro = new_e["rerun_of"]
@@ -652,7 +652,7 @@ class TurnStateManager:
         # 1. Restore scratch/
         scratch = config.SCRATCH_DIR
         try:
-            # Bug 28: await ALL pending zip threads, not just the target turn's,
+            # Bug fix: await ALL pending zip threads, not just the target turn's,
             # so no background thread holds file handles open during the wipe.
             self._await_all_zips()
 
@@ -667,7 +667,7 @@ class TurnStateManager:
                     if os.path.isdir(item_path):
                         robust_rmtree(item_path)
                     else:
-                        _force_remove(item_path)  # Bug 35: handles read-only files on Windows
+                        _force_remove(item_path)  # Bug fix: handles read-only files on Windows
                 except Exception:
                     _locked.append(item_path)  # track instead of silently skipping
 
@@ -680,7 +680,7 @@ class TurnStateManager:
                         if os.path.isdir(_lp):
                             robust_rmtree(_lp)
                         else:
-                            _force_remove(_lp)  # Bug 35: handles read-only files on Windows
+                            _force_remove(_lp)  # Bug fix: handles read-only files on Windows
                     except Exception:
                         _still_locked.append(os.path.basename(_lp))
                 if _still_locked:
@@ -702,7 +702,7 @@ class TurnStateManager:
             try:
                 shutil.copy2(reg_path, config.WORKSPACE_REGISTRY_FILE)
                 agent.workspace_tracker._load_registry()
-                # Bug 11: also purge the on-disk bm25_cache.pkl, not just the
+                # Bug fix: also purge the on-disk bm25_cache.pkl, not just the
                 # in-memory index - otherwise the stale pickle (newer mtime
                 # than the just-restored, older registry) gets reloaded as
                 # if valid, returning phantom search results from turns that
@@ -724,7 +724,7 @@ class TurnStateManager:
         if hasattr(agent, 'code_search_agent') and agent.code_search_agent:
             agent.code_search_agent.invalidate_index()
 
-        # Bug #37 fix: invalidate uploads cache so a PDF that was ingested
+        # Bug fix: invalidate uploads cache so a PDF that was ingested
         # before the restored turn doesn't show as "ALREADY INGESTED" if it
         # no longer exists post-restore.
         agent._uploads_cache = None
@@ -769,7 +769,7 @@ class TurnStateManager:
         """
         agent.chat_history            = agent.chat_history[:turn_num * 2]
         agent.last_tool_summary       = ""    # stale - would confuse next turn's context
-        # Bug 14 follow-up: also clear the cancelled-turn summary here. Without
+        # Bug fix: also clear the cancelled-turn summary here. Without
         # this, a turn cancelled just before a /restore or /rerun would have
         # its "[PREVIOUS TURN WAS CANCELLED...]" note survive the truncation
         # and get injected into the regenerated/restored turn's prompt, even
@@ -835,7 +835,7 @@ class TurnStateManager:
         for entry in self._ledger:
             t        = entry.get("turn", "?")
             ts       = entry.get("timestamp", "")[:16].replace("T", "  ")
-            # Bug 14: escape user-controlled strings so Rich doesn't interpret
+            # Bug fix: escape user-controlled strings so Rich doesn't interpret
             # brackets in prompt text as markup tags, which would cause MarkupError.
             preview  = _esc_markup(entry.get("prompt_preview", "")[:52])
             uploads  = [_esc_markup(u) for u in entry.get("user_uploads",   [])]
@@ -899,7 +899,7 @@ class TurnStateManager:
         Wipe all backup archives and the ledger.
         Called by /reset to keep backups/ in sync with the cleared session.
         """
-        # Bug #23 fix: wait for every in-flight background zip thread to
+        # Bug fix: wait for every in-flight background zip thread to
         # finish before deleting, so a just-committed turn's zip can't
         # materialise after the clear and leave ghost archives.
         for t in list(self._pending_zips.keys()):

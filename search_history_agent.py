@@ -114,7 +114,7 @@ class SearchHistoryAgent:
                     content = obj.get("content", "")
                     if not isinstance(content, str):
                         if isinstance(content, list):
-                            # Bug 37: extract only text blocks from multimodal content
+                            # Bug fix: extract only text blocks from multimodal content
                             # so image metadata / JSON structure doesn't pollute the index.
                             text_parts = [
                                 block.get("text", "")
@@ -142,7 +142,7 @@ class SearchHistoryAgent:
             with open(sidecar, "r", encoding="utf-8") as f:
                 data = json.load(f)
             if isinstance(data, list):
-                # Bug 30: filter out non-dict items that would crash .get() calls
+                # Bug fix: filter out non-dict items that would crash .get() calls
                 return [e for e in data if isinstance(e, dict)]
         except Exception:
             pass
@@ -179,7 +179,7 @@ class SearchHistoryAgent:
             mismatch_idx = None
             for idx, (u, a) in enumerate(turns[:len(existing)]):
                 entry = existing[idx]
-                # Bug 30: guard against corrupted (non-dict) sidecar entries
+                # Bug fix: guard against corrupted (non-dict) sidecar entries
                 if not isinstance(entry, dict):
                     mismatch_idx = idx
                     break
@@ -207,15 +207,15 @@ class SearchHistoryAgent:
             new_turns = turns[len(existing):]  # only unindexed turns
 
             # Build passage text: "USER: ...\nASSISTANT: ..."
-            # Truncate each half to 1000 chars so we stay under the
-            # embedding model's 512-token limit (4 chars ≈ 1 token).
-            # Bug #28 fix: strip <think>/<reasoning> tags from the assistant
-            # text BEFORE truncating, so the 1000-char window captures the
+            # Truncate each half to 4000 chars so we stay under the
+            # embedding model's token limit (4 chars ≈ 1 token).
+            # Bug fix: strip <think>/<reasoning> tags from the assistant
+            # text BEFORE truncating, so the 4000-char window captures the
             # actual answer rather than just the reasoning trace (which can be
             # several thousand chars long and would crowd out the real content).
             from utils import extract_thinking_tags
             passages = [
-                f"USER: {u[:1000]}\nASSISTANT: {extract_thinking_tags(a)[1][:1000]}"
+                f"USER: {u[:4000]}\nASSISTANT: {extract_thinking_tags(a)[1][:4000]}"
                 for u, a in new_turns
             ]
 
@@ -234,7 +234,7 @@ class SearchHistoryAgent:
                 )
                 continue
 
-            # Bug 16: _embed_batched() never raises on a batch failure - it
+            # Bug fix: _embed_batched() never raises on a batch failure - it
             # pads the result with None placeholders instead. Every entry in
             # `vecs` corresponds to a non-empty passage (valid_passages was
             # already filtered above), so a None here means embedding

@@ -61,9 +61,9 @@ Decide how to engage before engaging:
 Being right matters more than being agreeable — if the user is wrong, say so plainly instead of softening into agreement. This holds after the first answer too: if they push back or get frustrated, re-check your reasoning, but don't cave just because they're unhappy — emotional pressure isn't evidence you were wrong.
 The flip side: when you *are* wrong, say what was wrong, make the correction, move on.
 
-If user asks for any advice like "what to do", factor in real world constraints and give a answer which is relevant to user, not simply emit whatever you know.
+## 4. If user asks for any advice like "what to do", factor in real world constraints and give a answer which is relevant to user, not simply emit whatever you know. Enrich the user with extra information if you feel its relevant.
 
-## 4. Recall and think more and more — many times with different perspectives.
+## 5. Recall and think more and more — many times with different perspectives.
 """
 
 
@@ -130,7 +130,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             # Cloudflare backend
             self.cf_api_key = read_api_key(config.CLOUDFLARE_API_KEY_FILE, silence_warning=True)
             self.cf_base_url = f"https://api.cloudflare.com/client/v4/accounts/{config.CLOUDFLARE_ACCOUNT_ID}/ai/v1"
-            # Bug 7: CLOUDFLARE_ACCOUNT_ID defaults to "" when unset, which silently
+            # Bug fix: CLOUDFLARE_ACCOUNT_ID defaults to "" when unset, which silently
             # builds a malformed URL (".../accounts//ai/v1") that 404s with no
             # diagnostic. Track configuredness here so switch_backend() and the
             # request path can fail fast with a clear message instead.
@@ -168,7 +168,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             self.search_history_agent = SearchHistoryAgent()
             self.summarizer = ToolCallSummarizer()
             self.last_tool_summary = ""  # populated after each agentic turn
-            # Bug 14: separate field for cancelled/rolled-back turns - never
+            # Bug fix: separate field for cancelled/rolled-back turns - never
             # conflated with last_tool_summary, which must only reflect
             # committed turns (see _save_partial_history / generate_with_history).
             self.last_cancelled_summary = ""
@@ -209,10 +209,9 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             # Transient - session memory only, never saved to chat_history.
             self.last_think_trace: str = ""
 
-            # Controls whether workspace + uploads context is injected into
+            # Automatically inject workspace tree and uploads listing into
             # each turn's user message. Toggled by /ctx command.
-            # last-turn-actions and cancelled-turn blocks are unaffected.
-            self._ctx_enabled: bool = False
+            self._ctx_enabled: bool = True
 
 
             # Build dispatch table (defined in ToolHandlersMixin)
@@ -297,7 +296,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             # search_history (HISTORY_TOOLS_PROMPT) is baked only into
             # GROUP_PROMPTS["files"], matching GROUP_TOOLS["files"] - the tool
             # is advertised, and executable, only when 'files' is active.
-            # Bug #52 fix: track whether the date block has already been
+            # Bug fix: track whether the date block has already been
             # injected so 'web' + 'research' active together don't produce
             # two identical REFERENCE DATE blocks.
             _date_injected = False
@@ -323,7 +322,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         prompt = _REVIEW_SYSTEM_PROMPT
         if self._active_groups:
             prompt += "\n\n" + PSEUDO_TOOL_FORMAT
-            # Bug #52 fix: inject date at most once.
+            # Bug fix: inject date at most once.
             _date_injected = False
             for group in ("web", "files", "pdf", "bash", "research"):  # deterministic order
                 if group not in self._active_groups:
@@ -432,7 +431,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             return f"[dim]Already on {backend} backend.[/dim]"
 
         if backend == "cloudflare":
-            # Bug 7: refuse the switch with a clear message instead of flipping
+            # Bug fix: refuse the switch with a clear message instead of flipping
             # ACTIVE_BACKEND and letting every subsequent request 404 on a
             # malformed URL (".../accounts//ai/v1").
             if not self.cf_configured:
@@ -533,7 +532,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         # ACTIONS] permanently empty regardless of what tools were called last turn.
         _prior_tool_summary = self.last_tool_summary
         self.last_tool_summary = ""
-        # Bug 14: cancelled/rolled-back turns are captured separately (see
+        # Bug fix: cancelled/rolled-back turns are captured separately (see
         # _save_partial_history in start.py) so they can be labelled
         # distinctly here instead of being injected as "[LAST TURN ACTIONS]",
         # which would falsely imply those actions were committed.
@@ -575,7 +574,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
                 f"[LAST TURN ACTIONS]\n{_prior_tool_summary}\n\n"
                 if _prior_tool_summary else ""
             )
-            # Bug 14: distinctly-labelled - these actions were attempted then
+            # Bug fix: distinctly-labelled - these actions were attempted then
             # rolled back, not committed. Kept separate from `prior` above so
             # the model still benefits from knowing what was already tried
             # (e.g. to avoid repeating a failing approach) without being told
@@ -791,7 +790,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         guidance_text = (
             f"\n\n{thinking_block}"
             f"[SYSTEM: Turn interrupted. User guidance follows]\n{guidance}\n\n"
-            f"[SYSTEM: Resume from where you left off, incorporating the above guidance. Do not restart from scratch.]"
+            f"[SYSTEM: Resume from where you left off, incorporating the above guidance.]"
         )
 
         if messages and messages[-1].get("role") == "user":
@@ -919,7 +918,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
             # ingest_pdf is in SIMPLE_PARAM below (simple inner-text format)
             "search_history":             ["query", "top_k"],
             "search_semantic_scholar":    ["query", "limit", "year"],
-            # Bug #45 fix: url_search is self-closing in the documented/prompted
+            # Bug fix: url_search is self-closing in the documented/prompted
             # format (<url_search url="..." context="..."/>) but if a model emits
             # it as a block tag with named children, SIMPLE_PARAM would dump the
             # entire raw inner XML into 'url'. Moving to STRUCTURED handles both.
@@ -929,7 +928,7 @@ class EmperorAgent(LLMBackendsMixin, ToolHandlersMixin):
         # Primary param for simple (inner-text) tools
         SIMPLE_PARAM = {
             "quick_search": "query",
-            # url_search moved to STRUCTURED (Bug #45 fix above)
+            # url_search moved to STRUCTURED (Bug fix: above)
             "bash":         "command",   # <bash>command here</bash>
             "ingest_pdf":   "filename",  # <ingest_pdf>paper.pdf</ingest_pdf>
             "ingest_chat":  "filename",  # <ingest_chat>gemini_chat.txt</ingest_chat>

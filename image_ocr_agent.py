@@ -71,7 +71,7 @@ import config
 from utils import read_api_key, MIME_MAP, backoff_wait, mime_type_from_url, console
 
 # Concurrency / retry constants
-# Bug 20 / BUG-A1: deterministic client-side errors (bad request / payload too
+# Bug fix: / BUG-A1: deterministic client-side errors (bad request / payload too
 # large) indicate a problem with the specific image/request, not a provider
 # outage - subsequent pages should still be attempted against the same
 # provider, so these codes must NOT trip the circuit breaker. Shared by both
@@ -334,7 +334,7 @@ class _CircuitBreaker:
                 )
 
     def record_inconclusive(self):
-        # Bug 8 fix: unlock the half_open slot without touching failure counters
+        # Bug fix: unlock the half_open slot without touching failure counters
         with self._lock:
             if self._state == "half_open":
                 self._state = "open"          # let the next call re-probe after cooldown
@@ -413,6 +413,8 @@ class ImageOCRAgent:
             self._nim_breaker    = _CircuitBreaker("NIM")
             self._google_breaker = _CircuitBreaker("Google")
 
+            self._thread_local = threading.local()
+
         except Exception as e:
             console.print(f"🚨 [bold red]ImageOCRAgent init failed: {e}[/bold red]")
             raise
@@ -472,7 +474,7 @@ class ImageOCRAgent:
             _is_error = used_model.startswith("[ERROR") or markdown.startswith("[OCR ERROR")
             if not _is_error:
                 console.print(f"   ✅ [green]{label} OCR complete[/green] [dim]({used_model})[/dim]")
-            # Bug #21 fix: set error=True on failed results so callers can
+            # Bug fix: set error=True on failed results so callers can
             # skip embedding the error message as document content.
             results[idx] = {
                 "label":    label,
@@ -493,7 +495,7 @@ class ImageOCRAgent:
     # Outer retry rounds wrapper
 
     def _call_with_rounds(self, image_url: str, label: str) -> tuple:
-        self._last_failure_was_client_error = False
+        self._thread_local.last_failure_was_client_error = False
         """
         Outer loop: attempt the full provider dispatch (_call_with_fallback)
         up to MAX_ROUNDS times.
@@ -519,9 +521,9 @@ class ImageOCRAgent:
             result = self._call_with_fallback(image_url, label)
             if result is not None:
                 return result
-            # Bug 9 fix: if all failed and the cause was client-side, don't sleep
+            # Bug fix: if all failed and the cause was client-side, don't sleep
             # and retry - it will fail again. Break immediately.
-            if getattr(self, "_last_failure_was_client_error", False):
+            if getattr(self._thread_local, "last_failure_was_client_error", False):
                 break
 
         console.print(
@@ -604,7 +606,7 @@ class ImageOCRAgent:
                     f"model(s) ({last_err}).[/yellow]"
                 )
 
-        # Bug 20: don't trip the circuit breaker for deterministic client-side
+        # Bug fix: don't trip the circuit breaker for deterministic client-side
         # errors (bad request / payload too large) - those indicate a problem
         # with this specific image, not a provider outage, so subsequent pages
         # should still be attempted against the same provider.
@@ -616,8 +618,8 @@ class ImageOCRAgent:
             breaker.record_failure()
         else:
             breaker.record_inconclusive()
-            # Bug 9 fix: communicate client error up to break out of rounds loop
-            self._last_failure_was_client_error = True
+            # Bug fix: communicate client error up to break out of rounds loop
+            self._thread_local.last_failure_was_client_error = True
         return None
 
     # Single-round dispatch across providers
@@ -727,11 +729,11 @@ class ImageOCRAgent:
             except Exception as e:
                 raise RuntimeError(f"Could not decode data URI: {e}")
         elif image_url.startswith("http"):
-            # Bug 4: Google FileData only accepts File API URIs, not plain HTTP
+            # Bug fix: Google FileData only accepts File API URIs, not plain HTTP
             # URLs.  Download the image and pass as inline bytes instead.
             try:
                 import urllib.request as _urllib_req
-                # Bug #16 fix: plain urlopen sends 'Python-urllib/x.y' which
+                # Bug fix: plain urlopen sends 'Python-urllib/x.y' which
                 # Cloudflare, Imgur, Wikipedia etc. block with 403. Use a
                 # browser-style User-Agent to avoid the block.
                 _req = _urllib_req.Request(
@@ -864,10 +866,10 @@ class ImageOCRAgent:
                 except Exception as e:
                     raise RuntimeError(f"Could not decode data URI: {e}")
             elif image_url.startswith("http"):
-                # Bug 4: same fix as _call_google_ocr - download to bytes.
+                # Bug fix: same fix as _call_google_ocr - download to bytes.
                 try:
                     import urllib.request as _urllib_req
-                    # Bug #16 + #15 fix: browser User-Agent to bypass CDN 403s;
+                    # Bug fix: + #15 fix: browser User-Agent to bypass CDN 403s;
                     # 20 MB read cap to prevent OOM on unexpectedly large images.
                     _req = _urllib_req.Request(
                         image_url,
@@ -975,8 +977,8 @@ class ImageOCRAgent:
             breaker.record_failure()
         else:
             breaker.record_inconclusive()
-            # Bug 9 fix: communicate client error up to break out of rounds loop
-            self._last_failure_was_client_error = True
+            # Bug fix: communicate client error up to break out of rounds loop
+            self._thread_local.last_failure_was_client_error = True
         return None
 
     def _call_with_fallback_group(self, image_urls: list, label: str) -> tuple | None:
@@ -997,7 +999,7 @@ class ImageOCRAgent:
         return None
 
     def _call_with_rounds_group(self, image_urls: list, label: str) -> tuple:
-        self._last_failure_was_client_error = False
+        self._thread_local.last_failure_was_client_error = False
         """
         Outer retry loop for multi-image group calls.
         Mirrors _call_with_rounds exactly — up to MAX_ROUNDS full attempts.
@@ -1015,9 +1017,9 @@ class ImageOCRAgent:
             result = self._call_with_fallback_group(image_urls, label)
             if result is not None:
                 return result
-            # Bug 9 fix: if all failed and the cause was client-side, don't sleep
+            # Bug fix: if all failed and the cause was client-side, don't sleep
             # and retry - it will fail again. Break immediately.
-            if getattr(self, "_last_failure_was_client_error", False):
+            if getattr(self._thread_local, "last_failure_was_client_error", False):
                 break
 
         console.print(

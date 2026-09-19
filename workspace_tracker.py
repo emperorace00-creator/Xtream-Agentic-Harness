@@ -174,7 +174,7 @@ class WorkspaceTracker:
         self._registry_dirty = True
 
         # Update BM25 index (store full content - no token limit)
-        # Bug #33 fix: only skip .txt files that have a paired .chunks.json sidecar
+        # Bug fix: only skip .txt files that have a paired .chunks.json sidecar
         # (i.e. they're genuinely ingested PDFs covered by doc_search). A plain
         # notes.txt or script.txt without a sidecar deserves BM25 coverage too.
         _is_ingested_txt = (
@@ -288,7 +288,7 @@ class WorkspaceTracker:
                 is_last   = (i == len(groups) - 1)
                 connector = "└── " if is_last else "├── "
                 rel_path  = f"{parent}/{item}".lstrip("/")
-                # Bug 31: also check folder_registry so empty tracked directories
+                # Bug fix: also check folder_registry so empty tracked directories
                 # are rendered with a trailing '/' rather than as plain files.
                 is_folder = any(groups[item]) or (rel_path in self.folder_registry)
 
@@ -466,7 +466,7 @@ class WorkspaceTracker:
         if not self._bm25_index:
             return
 
-        # Bug 24: Hydrate any cache-stub entries (content == "") before tokenising.
+        # Bug fix: Hydrate any cache-stub entries (content == "") before tokenising.
         # When the BM25 index is restored from pickle, all content strings are set
         # to "" as an optimisation. If a workspace change then triggers a rebuild,
         # those stubs would produce empty token lists, corrupting the corpus.
@@ -534,9 +534,13 @@ class WorkspaceTracker:
         on_disk = {}
         on_disk_dirs = set()
         for root, dirs, files in os.walk(self.workspace_path):
-            dirs[:] = [d for d in dirs if not d.startswith('.') and d not in EXCL_DIRS]
+            dirs[:] = [
+                d for d in dirs
+                if not d.startswith('.')
+                and not any(fnmatch.fnmatch(d, pat) for pat in EXCL_DIRS)
+            ]
             
-            # Bug 26 fix: track all visible directories to prune deleted ones from folder_registry
+            # Bug fix: track all visible directories to prune deleted ones from folder_registry
             for d in dirs:
                 full_d = os.path.join(root, d)
                 rel_d = os.path.relpath(full_d, self.workspace_path).replace('\\', '/')
@@ -587,7 +591,7 @@ class WorkspaceTracker:
                         # mtime + size match → treat as unchanged (MD5 check was too expensive per turn).
                         counts["unchanged"] += 1
 
-        # Bug 26 fix: Phantom Deleted Folders Persist
+        # Bug fix: Phantom Deleted Folders Persist
         stale_dirs = self.folder_registry - on_disk_dirs
         if stale_dirs:
             self.folder_registry -= stale_dirs
@@ -629,7 +633,7 @@ class WorkspaceTracker:
 
     def invalidate_bm25_cache(self):
         """
-        Bug 11: clear the in-memory BM25 index AND delete the on-disk pickle
+        Bug fix: clear the in-memory BM25 index AND delete the on-disk pickle
         cache. Previously only the in-memory index was cleared on /restore,
         leaving bm25_cache.pkl on disk. Since /restore overwrites the registry
         file with an older snapshot (older mtime) while the pickle keeps its

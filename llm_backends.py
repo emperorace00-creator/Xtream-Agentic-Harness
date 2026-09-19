@@ -114,11 +114,11 @@ class LLMBackendsMixin:
                             except Exception:
                                 pass
                         elif src.startswith("http"):
-                            # Bug 4: Google FileData only accepts File API URIs, not plain
+                            # Bug fix: Google FileData only accepts File API URIs, not plain
                             # HTTP URLs.  Download the image and pass as inline bytes instead.
                             try:
                                 import urllib.request as _urllib_req
-                                # Bug 16 + 15 fix: browser User-Agent to bypass CDN 403s;
+                                # Bug fix: + 15 fix: browser User-Agent to bypass CDN 403s;
                                 # 20 MB read cap to prevent OOM on unexpectedly large images.
                                 _req = _urllib_req.Request(
                                     src,
@@ -229,7 +229,7 @@ class LLMBackendsMixin:
                 }
 
             except AttributeError as e:
-                # Bug 25: client not initialised (missing API key) - no point retrying.
+                # Bug fix: client not initialised (missing API key) - no point retrying.
                 return {"error": f"Google backend not initialised (missing API key?): {e}"}
             except Exception as e:
                 err = str(e)
@@ -252,7 +252,7 @@ class LLMBackendsMixin:
     # ----
 
     def _make_request_cloudflare(self, messages, temp) -> dict:
-        # Bug 7: defense in depth - switch_backend() already refuses to activate
+        # Bug fix: defense in depth - switch_backend() already refuses to activate
         # Cloudflare without an account ID, but guard the request path too in
         # case ACTIVE_BACKEND is ever set another way. Return the same
         # {"error": ...} dict shape every other backend in this file uses on
@@ -277,7 +277,7 @@ class LLMBackendsMixin:
                 }
 
                 if use_stream:
-                    # Bug 22: without stream_options the server never sends usage
+                    # Bug fix: without stream_options the server never sends usage
                     # metrics in the SSE stream, leaving telemetry at 0 tokens.
                     request_body["stream_options"] = {"include_usage": True}
 
@@ -322,7 +322,7 @@ class LLMBackendsMixin:
                 }
 
             except AttributeError as e:
-                # Bug 25: client not initialised (missing API key) - no point retrying.
+                # Bug fix: client not initialised (missing API key) - no point retrying.
                 return {"error": f"Cloudflare backend not initialised (missing API key?): {e}"}
             except Exception as e:
                 if attempt == max_retries - 1:
@@ -492,7 +492,7 @@ class LLMBackendsMixin:
         """
         try:
             _headers = {"Content-Type": "application/json"}
-            # Bug 34: include auth token if the local server requires it,
+            # Bug fix: include auth token if the local server requires it,
             # matching the pattern already used in _make_request_local.
             _local_key = getattr(self, "local_api_key", None)
             if _local_key:
@@ -576,7 +576,7 @@ class LLMBackendsMixin:
 
         # Regex: parse pseudo-XML self-closing tags from assistant content.
         # Matches <tool_name attr="val" .../> and <tool_name>...</tool_name>
-        # Bug 42 fix: Positional tag matching corrupts NIM history
+        # Bug fix: Positional tag matching corrupts NIM history
         _TOOL_ALT = "|".join(re.escape(name) for name in GROUP_TOOLS_UNION)
         _TAG_RE = re.compile(
             rf'<({_TOOL_ALT})([^>]*?)(?:/>|>(.*?)</\1>)',
@@ -585,18 +585,37 @@ class LLMBackendsMixin:
         # Regex: parse attr="val" or attr='val' from a tag's attribute string
         _ATTR_RE = re.compile(r'(\w+)=["\']([^"\']*)["\']')
 
-        def _parse_args(attr_str: str, inner: str) -> str:
+        def _parse_args(attr_str: str, inner: str, tool_name: str = "") -> str:
             """Build a JSON arguments string from XML attributes + inner text."""
             args = dict(_ATTR_RE.findall(attr_str or ""))
             if inner and inner.strip():
-                # Block-style tag: inner text is the primary argument.
-                # Heuristic: use the key name 'content' unless a single attr
-                # already exists (e.g. <view_lines file="x">...content...</view_lines>).
-                if not args:
-                    args["content"] = inner.strip()
+                inner_stripped = inner.strip()
+                # Detect child element tags (structured tools: str_replace, view_lines, etc.)
+                child_tags = re.findall(
+                    r'<(\w+)(?:\s[^>]*)?>([\s\S]*?)</\1\s*>', inner_stripped
+                )
+                if child_tags:
+                    for child_key, child_val in child_tags:
+                        # Strip one leading/trailing newline (how models format indented XML)
+                        val = child_val
+                        if val.startswith("\n"): val = val[1:]
+                        if val.endswith("\n"):   val = val[:-1]
+                        args[child_key] = val
+                elif not args:
+                    # Simple inner-text tool — map to the correct key by tool name
+                    _SIMPLE_KEYS = {
+                        "bash":        "command",
+                        "quick_search": "query",
+                        "ingest_pdf":  "filename",
+                        "ingest_text": "filename",
+                        "ingest_chat": "filename",
+                        "show_image":  "file",
+                    }
+                    key = _SIMPLE_KEYS.get(tool_name, "query")
+                    args[key] = inner_stripped
                 else:
-                    # The inner body supplements existing attrs (rare case)
-                    args["_body"] = inner.strip()
+                    # attrs present + inner body (uncommon)
+                    args["_body"] = inner_stripped
             return _json.dumps(args)
 
         result = []
@@ -662,7 +681,7 @@ class LLMBackendsMixin:
                     arguments = "{}"
                     if k < len(found_tags):
                         tag_name, attr_str, inner = found_tags[k]
-                        arguments = _parse_args(attr_str, inner)
+                        arguments = _parse_args(attr_str, inner, tool_name=tag_name)
                     else:
                         # No tag found at this position - synthesize minimal args
                         # by parsing the label e.g. "bash[ls -la]" → {command: "ls -la"}
@@ -730,7 +749,7 @@ class LLMBackendsMixin:
                 }
 
                 if use_stream:
-                    # Bug 22: include_usage ensures the final SSE chunk carries
+                    # Bug fix: include_usage ensures the final SSE chunk carries
                     # token counts; without this the telemetry always shows 0.
                     request_body["stream_options"] = {"include_usage": True}
 
@@ -788,7 +807,7 @@ class LLMBackendsMixin:
                 }
 
             except AttributeError as e:
-                # Bug 25: nim_api_key or nim_base_url not set (missing key) - fail fast.
+                # Bug fix: nim_api_key or nim_base_url not set (missing key) - fail fast.
                 return {"error": f"NIM backend not initialised (missing API key?): {e}"}
             except Exception as e:
                 if attempt == max_retries - 1:
@@ -832,6 +851,21 @@ class LLMBackendsMixin:
                 _usage = chunk.get("usage") or {}
                 if _usage.get("total_tokens"):
                     total_tokens = _usage["total_tokens"]
+
+                # NEW: detect streamed error object — NIM may send {"error": {...}} or {"error": "string"}
+                if "error" in chunk:
+                    err_obj = chunk["error"]
+                    if isinstance(err_obj, dict):
+                        err_msg = err_obj.get("message") or err_obj.get("code") or str(err_obj)
+                    else:
+                        err_msg = str(err_obj)
+                    console.print(f"\n⚠️ [red]NIM streaming error: {err_msg}[/red]")
+                    return {
+                        "content":  "".join(full_content),  # preserve partial content received before error
+                        "thinking": "".join(full_thinking) or None,
+                        "usage":    total_tokens,
+                        "error":    f"NIM streaming error: {err_msg}",
+                    }
 
                 choices = chunk.get("choices", [])
                 if not choices:

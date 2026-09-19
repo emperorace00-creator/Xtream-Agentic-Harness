@@ -88,7 +88,7 @@ TILING_GRID = (2, 2)
 # Useful for clean, already high-contrast input images.
 IMAGE_ENHANCE = False
 
-GOOGLE_MODEL         = "gemini-3.5-flash-lite"
+GOOGLE_MODEL         = "gemini-3.5-flash"
 GOOGLE_THINKING_TYPE = "native"
 GOOGLE_VISION        = True
 
@@ -212,8 +212,8 @@ EMPEROR_REVIEW_TEMP     = 1.05  # slightly higher entropy for self-critique turn
 
 RERANKER_MODEL              = "nvidia/llama-nemotron-rerank-vl-1b-v2"
 RERANKER_URL                = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking"
-# NVIDIA reranker hard limit is 512 tokens per passage.
-# 1800 chars ≈ 450 tokens @ 4 chars/token - comfortably under the limit.
+
+# 8000 chars ≈ 2000 tokens @ 4 chars/token - comfortably under the limit.
 RERANKER_MAX_PASSAGE_CHARS  = 8000
 
 TOKEN_SAFETY_MARGIN    = 1.05
@@ -255,11 +255,11 @@ CODE_CHUNK_MIN_LINES     = 3      # discard trivially short chunks
 CODE_INDEX_EXTENSIONS    = {".py", ".js", ".ts", ".go", ".c", ".cpp", ".h", ".java",
                             ".rs", ".rb", ".php", ".sh", ".sql", ".md", ".txt",
                             ".yaml", ".yml", ".toml", ".json", ".css", ".html",
-                            # Bug #48 fix: add extensions already in _LANG_MAP/CODE_EXTENSIONS
+                            # Bug fix: add extensions already in _LANG_MAP/CODE_EXTENSIONS
                             # that were missing here, causing semantic-index drift.
                             ".jsx", ".tsx", ".cs", ".hpp"}
 CODE_INDEX_EXCLUDE       = {".env", ".gitignore"}     # never index these, regardless of extension
-# Bug #40 fix: expand exclude dirs to match utils.EXCL_DIRS fully - the
+# Bug fix: expand exclude dirs to match utils.EXCL_DIRS fully - the
 # previous set was missing target/build/dist/env, causing compiled artifacts
 # and bundles to be sent to paid Codestral Embed.
 CODE_INDEX_EXCLUDE_DIRS  = {
