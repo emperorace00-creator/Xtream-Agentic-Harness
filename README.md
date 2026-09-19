@@ -1,7 +1,3 @@
-<div align="center">
-  <!-- TODO: Paste your 2-second logo MP4 link here inside the src attribute -->
-  <video src="PASTE_LOGO_MP4_LINK_HERE" autoplay loop muted playsinline width="400"></video>
-</div>
 
 # Xtream : Sandboxed AI Assistant
 
