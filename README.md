@@ -1,4 +1,12 @@
+<div align="center">
+  <!-- TODO: Paste your 2-second logo MP4 link here inside the src attribute -->
+  <video src="PASTE_LOGO_MP4_LINK_HERE" autoplay loop muted playsinline width="400"></video>
+</div>
+
 # Xtream : Sandboxed AI Assistant
+
+<!-- TODO: Drag and drop your 26-second full demo MP4 file right here in the GitHub web editor. Do not use HTML tags, just let GitHub generate the default link so it has play/pause controls! -->
+[PASTE_FULL_DEMO_VIDEO_LINK_HERE]
 
 Xtream is an agentic coding and research assistant that talks to multiple LLM
 backends - Nvidia NIM, Google Gemini, or
